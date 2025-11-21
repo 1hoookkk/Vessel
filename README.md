@@ -1,355 +1,166 @@
-# VESSEL // CORIUM REACTOR
+# VESSEL
 
-**Aesthetic:** Decommissioned Lab Equipment
-**Architecture:** Physics-Driven Z-Plane Filter
-**Target:** Trap Production with Heavy Inertia
+**A 14-Pole Morphing Z-Plane Filter**
+**Project ARMAdillo**
 
----
+--------
 
-## Concept
+## Overview
 
-VESSEL is a Z-Plane filter where parameters are controlled by a **Physics Engine** (Smoothed Particle Hydrodynamics) rather than traditional LFOs. The user fights fluid mass to change the sound.
+VESSEL is a VST3/AU audio plugin that emulates the legendary E-mu H-Chip (FX8010)
+Z-Plane filter architecture. It features a cascade of 7 biquad sections (14
+poles total) with authentic fixed-point arithmetic and hardware-accurate
+saturation, delivering the iconic "E-mu sound."
 
-This is not a "tool." This is an **organism**.
+### Key Features
 
----
+• **14-Pole Cascade:** 7 biquad sections in series for complex filtering
+• **ARMAdillo Encoding:** Interpolation in k-space (Pitch/Resonance), not coefficient-space
+• **Filter Cube:** Trilinear interpolation between 8 filter frames for smooth morphing
+• **Fixed-Point Arithmetic:** 32-bit state/coefficients with 64-bit accumulation
+• **Real-Time Safe:** Zero allocations in audio processing thread
+• **3D Visualization:** "Lexicon-style" frequency response ribbons with depth
+
+### Aesthetic: "Fragile Brutalism"
+
+The UI embraces a minimalist, technical aesthetic inspired by haunted hardware:
+
+• High contrast terminal green on deep black
+• 1px thin lines, no gradients
+• Monochromatic, minimal
+• Ghostly depth effects in visualization
+
+--------
 
 ## Architecture
 
-### Core Components
+### DSP Engine (`source/DSP/EmuZPlaneCore.h`)
 
-#### 1. **MuseZPlaneEngine** (`source/DSP/MuseZPlaneEngine.h`)
-- Unified wrapper for Z-Plane filter implementations
-- Adapter pattern supporting Fast/Authentic modes via `std::variant`
-- Thread-safe parameter setters
-- Pole visualization interface for UI
+The core DSP engine preserves the exact H-Chip mathematics:
 
-**Key Methods:**
 ```cpp
-void setMorph(float m);        // Morph position (0-1)
-void setIntensity(float i);    // Resonance/Q
-void setDrive(float d);        // Distortion
-void process(float* L, float* R, int numSamples);
+// Q31 Fixed-Point Format
+using dsp_sample_t = int32_t;  // 1 sign bit, 0 integer bits, 31 fractional bits
+using dsp_accum_t = int64_t;   // 64-bit accumulator for MAC operations
+
+// Hardware-accurate saturation (branchless)
+inline dsp_sample_t saturate(dsp_accum_t x);
 ```
 
-#### 2. **Corium PhysicsEngine** (`source/Physics/PhysicsEngine.h`)
-- SPH (Smoothed Particle Hydrodynamics) with 100 particles
-- Audio-reactive forces: repulsion, vorticity, cohesion
-- Heavy inertia simulation (viscosity = 0.95)
+Key Classes:
 
-**Physics Mappings:**
-- `CentroidX` → Filter Morph
-- `CentroidY` → Drive/Degrade
-- `Dispersion` → Resonance (more spread = higher Q)
+• `EmuHChipFilter`: The main filter engine with cascade processing
+• `ARMAdilloEngine`: Trilinear interpolation and k-space decoding
+• `ZPlaneCube`: 8-corner parameter space for morphing
 
-**Control Parameters:**
-```cpp
-void setSensitivity(float s);  // Audio reactivity (default: 1.0)
-void setViscosity(float v);    // Drag (0.95 = heavy sludge)
-void setAttraction(float a);   // User control strength (0.02 = fight)
-```
+### Parameters
 
-#### 3. **MonitorView** (`source/UI/MonitorView.h`)
-- 1970s Amber Monochrome Vector Display aesthetic
-- 64x64 bitmap cache with metaball rendering
-- Nearest-neighbor upscaling for visible pixels
-- Scanline overlay for CRT authenticity
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| **MORPH** | 0.0 - 1.0 | Interpolates the Z-Plane X-axis (filter character) |
+| **FREQ** | 0.0 - 1.0 | Shifts the Y-axis (pitch tracking) |
+| **TRANS** | 0.0 - 1.0 | Shifts the Z-axis (transform/resonance) |
 
----
+### Thread Safety
 
-## Shape Modes: The Three Personalities
+VESSEL adheres to strict real-time safety protocols:
 
-VESSEL features three distinct **Shape Modes** that completely alter the character of the filter, physics behavior, and visual display. Each mode is designed for a specific sonic aesthetic and automatically engages appropriate safety/vintage behaviors.
+• **Audio Thread:** Uses `float*` raw pointers for zero-allocation processing
+• **Message Thread:** Runs visualization calculations on a timer
+• **Communication:** Triple-buffered state for lock-free visualization
+• **No Allocations:** All buffers pre-allocated in constructor
 
-### LOW DAMP (Trap Anchor - Modern Safe)
+--------
 
-**Character:** The modern, thick, underwater "Trap" filter.
+## Building
 
-**DSP Behavior:**
-- 14-pole lowpass configuration
-- Sub-Protect **FORCED ON** @ 180Hz (preserves 808 rumble)
-- Smooth modulation (high resolution, no stepping)
-- Adaptive gain compensation enabled (maintains volume)
+### Requirements
 
-**Physics Visual:**
-- Heavy clustering (high cohesion)
-- Particles stick together at bottom of display
-- Standard amber color (#FF9900)
-- Viscosity: 0.95 (very heavy drag)
+• CMake 3.24 or higher
+• C++20 compiler (GCC 11+, Clang 14+, MSVC 2022+)
+• JUCE 8.0 (automatically fetched)
 
-**Use Case:** Safe for production work. Won't destroy your sub-bass. Classic Trap/Drake underwater effect.
+### Build Instructions
 
----
-
-### HIGH TEAR (Audity 2000 Ghost - Vintage Dangerous)
-
-**Character:** Authentic E-mu Audity 2000 emulation. Thin, harsh, digital screaming.
-
-**DSP Behavior:**
-- 14-pole highpass with **procedural coefficient spreading**
-- Sub-Protect **FORCED OFF** (phase destroys lows - intentional)
-- Stepped modulation @ 64 samples (E-mu "zipper" effect for digital grit)
-- Adaptive gain **DISABLED** (volume drops up to 60% as resonance increases)
-- Resonance drop formula: `gain *= (1.0 - intensity * 0.6)`
-
-**Procedural Coefficient Generation:**
-```cpp
-// Poles spread apart as morph increases ("tearing" the spectrum)
-baseTheta = 0.15 + (morph * 0.4);  // High frequency range (1kHz-10kHz)
-r = 0.88 + (intensity * 0.11);     // Pole radius (high Q)
-// 7 conjugate pairs with alternating spread directions
-// Zeros: 4 at DC (hard bass cut), 3 distributed for ripple
-```
-
-**Physics Visual:**
-- Scattered particles (low cohesion)
-- Hyper-reactive to audio (sensitivity: 1.5x)
-- Red-amber warning color (#FF6600)
-- Viscosity: 0.88 (lighter, chaotic)
-- **WARNING OVERLAY:** "SUB PHASE BYPASSED" / "GAIN COMPENSATION DISABLED"
-
-**Use Case:** Hi-hat shredding. Yeat/Carti style thin electric screech. **NOT safe for 808s** - will phase-warp and hollow out your low end.
-
----
-
-### PHASE WARP (Alien - Hybrid)
-
-**Character:** All-pass/comb mesh. Strange, hollow, phaser-like artifacts.
-
-**DSP Behavior:**
-- 14-stage allpass/comb configuration
-- Sub-Protect **USER CHOICE** (respects global toggle)
-- Fluid modulation (smooth)
-- Adaptive gain enabled
-
-**Physics Visual:**
-- Concentric ring formation behavior
-- Balanced reactivity (sensitivity: 0.8x - calmer)
-- Cyan-tinted color (R:77, G:204, B:128)
-- Viscosity: 0.92 (medium)
-
-**Use Case:** Experimental textures. Liquid phase artifacts. Alien soundscapes.
-
----
-
-## UI: Shape Mode Selector
-
-**Location:** Title bar, right side
-
-**Control:** Dropdown selector labeled "SIGNAL PATH:"
-- LOW DAMP
-- HIGH TEAR
-- PHASE WARP
-
-**Visual Feedback:**
-- MonitorView changes color scheme per mode
-- HIGH_TEAR displays warning text overlay
-- Particle behavior adapts automatically
-
-**Implementation:** source/PluginEditor.cpp:28
-
----
-
-## DSP Signal Flow (Mode-Dependent)
-
-```
-Audio Input
-    ↓
-RMS Energy Calculation
-    ↓
-Shape Mode Configuration
-    ├─ Detect current mode (LOW_DAMP/HIGH_TEAR/PHASE_WARP)
-    ├─ Set behavior flags (sub-protect, stepped modulation, resonance drop)
-    ├─ Configure filter engine (enable/disable adaptive gain)
-    └─ Set physics visual profile (clustering, scatter, or ring)
-    ↓
-Physics Update (every 32 samples)
-    ├─ Audio Energy → Vorticity (spin)
-    ├─ User Target → Attraction Forces
-    └─ Output: Centroid + Dispersion
-    ↓
-Modulation Routing
-    ├─ HIGH_TEAR: Stepped morph (64-sample decimation)
-    └─ Others: Smooth morph (high resolution)
-    ↓
-Parameter Mapping
-    ├─ CentroidX → Filter Morph
-    ├─ Dispersion → Filter Resonance
-    └─ (Breach Mode) Dispersion → Drive
-    ↓
-Sub-Protect Logic (Mode-Dependent)
-    ├─ LOW_DAMP: FORCED ON @ 180Hz
-    │   ├─ Crossover split (Linkwitz-Riley)
-    │   ├─ LOW: Pass through clean
-    │   ├─ HIGH: Apply filter
-    │   └─ Sum: Clean sub + Mangled highs
-    ├─ HIGH_TEAR: FORCED OFF (full spectrum destruction)
-    └─ PHASE_WARP: User choice
-    ↓
-Resonance Drop (HIGH_TEAR only)
-    └─ Apply volume reduction: gain *= (1.0 - intensity * 0.6)
-    ↓
-Audio Output
-```
-
-**Key Decision Points:**
-- source/PluginProcessor.cpp:141 - Shape mode switch
-- source/PluginProcessor.cpp:187 - Stepped vs smooth modulation
-- source/PluginProcessor.cpp:217 - Sub-protect application
-- source/PluginProcessor.cpp:266 - Resonance drop
-
----
-
-## Sub-Protect (Trap Production Safety)
-
-**Problem:** Z-Plane filters can phase-warp sub-bass, ruining 808s.
-
-**Solution:** Crossover at 180Hz
-- **Below 180Hz:** Clean pass-through (preserve sub rumble)
-- **Above 180Hz:** Full Corium destruction (texture without killing low end)
-
-Controlled via `subProtectEnabled_` atomic bool (source/PluginProcessor.h:61)
-
----
-
-## Breach Mode
-
-When `isBreach_` is enabled:
-- Dispersion drives Distortion instead of user parameter
-- More particle spread = harder 808 destruction
-- For when you want maximum chaos
-
----
-
-## Build Instructions
-
-### Prerequisites
-- CMake 3.24+
-- C++20 compiler (MSVC 2019+, GCC 11+, Clang 14+)
-- JUCE 8.0.0 (automatically fetched)
-
-### Windows (MSVC)
 ```bash
-mkdir build
-cd build
-cmake .. -G "Visual Studio 17 2022"
+# Clone the repository
+git clone https://github.com/1hoookkk/Vessel.git
+cd Vessel
+
+# Create build directory
+mkdir build && cd build
+
+# Configure CMake
+cmake .. -DCMAKE_BUILD_TYPE=Release
+
+# Build
 cmake --build . --config Release
 ```
 
-### macOS/Linux
-```bash
-mkdir build
-cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build .
-```
+--------
 
-### Build Outputs
-- **VST3:** `build/Vessel_artefacts/Release/VST3/Vessel.vst3`
-- **AU:** `build/Vessel_artefacts/Release/AU/Vessel.component` (macOS only)
-- **Standalone:** `build/Vessel_artefacts/Release/Standalone/Vessel`
+## Usage
 
----
+1. Load VESSEL in your DAW as a VST3 or AU plugin
+2. Insert on a track (works best on melodic material or synths)
+3. Adjust parameters:
+   • **MORPH:** Sweep to explore different filter characters
+   • **FREQ:** Modulate for pitch tracking effects
+   • **TRANS:** Control resonance and transform characteristics
+4. Watch the visualization: See the frequency response morph in real-time
 
-## Integration: Adding E-MU Filter Code
+--------
 
-The current implementation uses **placeholder stubs** for the Z-Plane filter.
+## Technical Details
 
-To integrate your authentic E-MU extraction:
+### Fixed-Point Math
 
-1. **Place your filter code** in a new directory (e.g., `source/DSP/emu_extracted/`)
+The Z-Plane core uses Q31 fixed-point arithmetic to precisely replicate the H-Chip's behavior:
 
-2. **Update includes** in `source/DSP/MuseZPlaneEngine.h:11-13`:
-   ```cpp
-   #include "emu_extracted/ZPlaneFilter_fast.h"
-   #include "emu_extracted/AuthenticEMUZPlane.h"
-   ```
-
-3. **Remove placeholder stubs** (lines 21-45 in MuseZPlaneEngine.h)
-
-4. **Verify adapters** match your actual class interfaces (lines 128-183)
-
----
-
-## Physics Tuning Guide
-
-### Heavy Sludge (Current Defaults)
 ```cpp
-physicsEngine_.setViscosity(0.95f);      // High drag
-physicsEngine_.setAttraction(0.02f);     // Weak pull (fight)
-physicsEngine_.setSensitivity(1.0f);     // Full audio reactivity
+// Biquad processing (Direct Form I)
+dsp_accum_t acc = 0;
+acc += (dsp_accum_t)x * c.a0;      // Feedforward
+acc += (dsp_accum_t)s.x1 * c.a1;
+acc += (dsp_accum_t)s.x2 * c.a2;
+acc += (dsp_accum_t)s.y1 * c.b1;   // Feedback
+acc += (dsp_accum_t)s.y2 * c.b2;
+acc >>= 31;                         // Q62 -> Q31
+dsp_sample_t y = saturate(acc);    // Clamp to Q31 range
 ```
 
-### Water (Lighter Feel)
+### Coefficient Decoding
+
+The ARMAdillo engine decodes k-space parameters to biquad coefficients:
+
 ```cpp
-physicsEngine_.setViscosity(0.80f);      // Less drag
-physicsEngine_.setAttraction(0.08f);     // Stronger pull (easier)
+// Resonance (k2) -> Pole Radius
+float R = 0.0f + (0.98f * params.k2);
+float b2 = -(R * R);
+
+// Frequency (k1) -> Theta
+float freqHz = 20.0f * std::pow(1000.0f, params.k1);
+float theta = 2.0f * 3.14159f * freqHz / sampleRate;
+float b1 = 2.0f * R * std::cos(theta);
 ```
 
-### Spin/Vorticity
-Controlled internally in `PhysicsEngine.h:53`:
-```cpp
-const float spin = energy * 2.5f;  // Increase for more swirl
-```
+--------
 
----
+## License
 
-## Thread Safety
+This project is licensed under the GPLv3 license.
 
-### Audio Thread (CRITICAL)
-- **NO allocations** in `processBlock`
-- **NO locks** in physics update
-- Sub-protect uses stack-allocated buffers
-- All parameter updates via atomics
+VESSEL uses the JUCE framework, which has its own licensing terms. Please review JUCE's license at [juce.com](https://juce.com/legal).
 
-### Message Thread
-- Parameter changes from UI
-- Engine mode switching (Fast/Authentic)
-- Safe via `std::atomic` and `std::variant::emplace`
+--------
 
----
+## Credits
 
-## File Structure
+**Z-Plane Implementation Lead:** Project ARMAdillo
+**Based on:** E-mu Systems H-Chip/FX8010 Architecture
+**Framework:** JUCE 8
 
-```
-Vessel/
-├── CMakeLists.txt              # JUCE 8 + CMake config
-├── CLAUDE.md                   # Project context
-├── README.md                   # This file
-├── .gitignore
-└── source/
-    ├── PluginProcessor.h/cpp   # Main audio processor
-    ├── PluginEditor.h/cpp      # Main editor
-    ├── DSP/
-    │   └── MuseZPlaneEngine.h  # Unified filter wrapper
-    ├── Physics/
-    │   └── PhysicsEngine.h     # Corium SPH (header-only)
-    └── UI/
-        ├── MonitorView.h       # Amber CRT display
-        └── MonitorView.cpp
-```
-
----
-
-## Next Steps
-
-1. **Integrate E-MU filter code** (replace stubs in MuseZPlaneEngine.h)
-2. **Build and test** with the Standalone app
-3. **Tune physics constants** for desired feel
-4. **Add parameter automation** (JUCE ValueTree)
-5. **Implement preset system** (JSON serialization)
-
----
-
-## Notes
-
-- Physics updates every **32 samples** (optimal for 48kHz)
-- MonitorView renders at **30 Hz** (intentional CRT persistence)
-- Metaball threshold: `0.35f` (increase for tighter blobs)
-- Amber color: RGB(255, 153, 0) with discrete brightness levels
-
----
-
-**Serial Number:** CRM-1974-Z14
-**Classification:** Experimental Audio Reactor
-**Status:** Decommissioned (Reactivated for Production Use)
+Special thanks to:
+• Dave Rossum (Rossum Electro-Music)
+• E-mu Systems
+• Ross Bencina (Real-time Audio Programming)
