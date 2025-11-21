@@ -1,0 +1,60 @@
+# CMake Build Artifacts
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# IDE Files
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.xcworkspace
+*.xcuserdata
+.DS_Store
+
+# JUCE Specific
+JuceLibraryCode/
+Builds/
+*.jucer.bak
+
+# Compiled Objects
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Plugin Binaries
+*.vst3
+*.component
+*.aaxplugin
+
+# Dependency Downloads
+_deps/
+external/
+
+# Logs and Temp Files
+*.log
+*.tmp
+*.swp
+*~
+
+# Package managers
+.conan/
+vcpkg_installed/
+
+# Local/Temp files
+build_clean/
+here/
+*.jpg
+*.png
