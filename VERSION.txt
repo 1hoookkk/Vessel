@@ -1,0 +1,8 @@
+VESSEL v1.0.0
+Project ARMAdillo
+Z-Plane Filter Emulation
+
+Build: Initial Release
+Date: 2025-11-21
+Architecture: 14-Pole Cascade (7 Biquads)
+DSP: Fixed-Point Q31 (H-Chip Authentic)

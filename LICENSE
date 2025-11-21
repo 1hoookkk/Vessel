@@ -1,0 +1,34 @@
+GNU GENERAL PUBLIC LICENSE
+Version 3, 29 June 2007
+
+VESSEL - Z-Plane Filter Plugin
+Copyright (C) 2025 ARMAdillo Project
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+
+ADDITIONAL NOTICES:
+
+This project uses the JUCE framework, which has its own licensing terms.
+Please review JUCE's license at https://juce.com/legal
+
+The Z-Plane filter architecture is based on patents and technology
+originally developed by E-mu Systems and Dave Rossum. This implementation
+is an independent emulation for educational and musical purposes.
+
+---
+
+For the full text of the GNU GPL v3, visit:
+https://www.gnu.org/licenses/gpl-3.0.html
