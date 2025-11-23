@@ -32,11 +32,10 @@ add_library(Heavy_Core STATIC
     source/UI/HeavyBar.h
     source/DSP/MaterialPhysics.h
     source/DSP/ExciterEngine.h
-    source/DSP/AuthenticEMUEngine.h
+    source/DSP/EmuHChipFilter.h
     source/DSP/EMUAuthenticTables.h
     source/DSP/IShapeBank.h
     source/DSP/IZPlaneEngine.h
-    source/DSP/NonlinearStage.h
     source/DSP/EMUStaticShapeBank.h
     source/DSP/EMUStaticShapeBank.cpp
     source/DSP/ZPlaneCoefficientBank.cpp
