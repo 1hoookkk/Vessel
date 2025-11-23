@@ -51,12 +51,26 @@ struct HChipFilter {
             coeffs[i] = {0, 0, 0, 0, 0};
         }
     }
+
+    // Emergency reset if states explode
+    void resetStates() {
+        for(int i=0; i<NUM_STAGES; i++) {
+            states[i] = {0, 0};
+        }
+    }
 };
 
 // -- 2. HELPER FUNCTIONS (THE "GRIT" GENERATORS) --
 
+// DENORMAL FLUSH: Prevent CPU stalls from tiny values
+inline float flush_denormal(float x) {
+    constexpr float DENORMAL_THRESHOLD = 1e-15f;
+    return (std::abs(x) < DENORMAL_THRESHOLD) ? 0.0f : x;
+}
+
 // CONVERSION: Float (-1.0 to 1.0) -> Int32 (Q31)
 inline int32_t float_to_q31(float x) {
+    x = flush_denormal(x); // Flush denormals BEFORE conversion
     if (x > 1.0f) x = 1.0f;
     if (x < -1.0f) x = -1.0f;
     return (int32_t)(x * 2147483647.0f);
@@ -64,14 +78,15 @@ inline int32_t float_to_q31(float x) {
 
 // CONVERSION: Int32 (Q31) -> Float
 inline float q31_to_float(int32_t x) {
-    return (float)x * (1.0f / 2147483648.0f);
+    float result = (float)x * (1.0f / 2147483648.0f);
+    return flush_denormal(result); // Flush denormals on output too
 }
 
 // ARTIFACT GENERATOR: Float -> Int16 (Q15) Truncation
-// HALF-SCALE TRICK: Biquad coeffs can go to ±1.9, but Q15 only stores ±1.0
-// We store 0.5x the value, then shift 1 less bit during MAC to compensate
+// Q15 format: 1 sign bit, 0 integer bits, 15 fractional bits
+// Range: [-1.0, 1.0) represented as [-32768, 32767]
 inline int16_t float_to_q15_truncated(float x) {
-    float scaled = (x * 0.5f) * 32768.0f; // Scale by 0.5 to fit ±1.9 into ±1.0 range
+    float scaled = x * 32768.0f;
     if (scaled > 32767.0f) scaled = 32767.0f;
     if (scaled < -32768.0f) scaled = -32768.0f;
     return (int16_t)scaled;
@@ -285,13 +300,11 @@ inline void process_block(HChipFilter* filter, float* data, int numSamples, cons
             // Term: b0 * x[n]
             acc = (int64_t)c->b0 * (int64_t)signal;
 
-            // Add State z1 (Shifted to match Q46 accumulator alignment)
-            // Note: State is stored in Q31. To add to Q46 accumulator,
-            // we conceptually treat state as already aligned or shift the product down.
-            // HALF-SCALE COMPENSATION: Coeffs are stored at 0.5x, so shift by 14 instead of 15
-            // This gives us 2x gain to restore the original magnitude
+            // Add State z1 (Shifted to match Q31 format)
+            // Q15 * Q31 = Q46 → shift right 15 bits → Q31
+            // This maintains consistent Q31 format throughout the cascade
 
-            int32_t term_b0 = (int32_t)(acc >> 14); // Bit Shift Right 14 (was 15)
+            int32_t term_b0 = (int32_t)(acc >> 15); // Shift Q46 → Q31
 
             // y_raw is the potential output before clipping
             int64_t y_raw = (int64_t)term_b0 + (int64_t)st->z1;
@@ -306,16 +319,16 @@ inline void process_block(HChipFilter* filter, float* data, int numSamples, cons
             // Equation 2: z1[n] = b1*x[n] - a1*y[n] + z2[n-1]
             // We use y_clipped for feedback math to ensure the "Distorted Formant" behavior
 
-            int64_t term_b1 = ((int64_t)c->b1 * (int64_t)signal) >> 14;
-            int64_t term_a1 = ((int64_t)c->a1 * (int64_t)y_clipped) >> 14;
+            int64_t term_b1 = ((int64_t)c->b1 * (int64_t)signal) >> 15;
+            int64_t term_a1 = ((int64_t)c->a1 * (int64_t)y_clipped) >> 15;
 
             // Update z1
             st->z1 = hard_clip_q31(term_b1 - term_a1 + st->z2);
 
             // Equation 3: z2[n] = b2*x[n] - a2*y[n]
 
-            int64_t term_b2 = ((int64_t)c->b2 * (int64_t)signal) >> 14;
-            int64_t term_a2 = ((int64_t)c->a2 * (int64_t)y_clipped) >> 14;
+            int64_t term_b2 = ((int64_t)c->b2 * (int64_t)signal) >> 15;
+            int64_t term_a2 = ((int64_t)c->a2 * (int64_t)y_clipped) >> 15;
             
             // Update z2
             st->z2 = hard_clip_q31(term_b2 - term_a2);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Hexagon, Activity, Zap, Power, ChevronUp, ChevronDown } from 'lucide-react';
+import { Activity, Power, ChevronUp, ChevronDown, X, Waveform } from 'lucide-react';
 
 const VesselFinalShippable = () => {
   // --- GOLD MASTER STATE ---
@@ -42,14 +42,14 @@ const VesselFinalShippable = () => {
 
     const render = () => {
       // 1. Background (Ceramic/E-ink Grey)
-      ctx.fillStyle = '#dcdcd9'; 
+      ctx.fillStyle = '#c8c8c6'; 
       ctx.fillRect(0, 0, w, h);
 
       if (bypass) {
           ctx.fillStyle = 'rgba(0,0,0,0.1)';
           ctx.font = 'bold 20px monospace';
           ctx.textAlign = 'center';
-          ctx.fillText("DISENGAGED", w/2, h/2 + 6);
+          ctx.fillText("OFFLINE", w/2, h/2 + 6);
           frameId = requestAnimationFrame(render);
           return;
       }
@@ -80,7 +80,7 @@ const VesselFinalShippable = () => {
       }
 
       // 3. Render Ink (Thresholding)
-      ctx.fillStyle = '#151515';
+      ctx.fillStyle = '#2a2a2a';
       
       // Optimization: Scanline skip for "screen" texture
       for(let y=0; y<h; y+=2) {
@@ -104,12 +104,12 @@ const VesselFinalShippable = () => {
       }
 
       // 4. Data Overlay
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.font = '9px monospace';
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.font = '10px monospace';
       ctx.textAlign = 'left';
-      ctx.fillText(`FLUX: ${(fVal*100).toFixed(0)}%`, 10, h - 12);
+      ctx.fillText(`FLUX: ${(fVal*100).toFixed(0)}%`, 14, h - 14);
       ctx.textAlign = 'right';
-      ctx.fillText(`Z-POS: ${(mVal*100).toFixed(0)}`, w - 10, h - 12);
+      ctx.fillText(`Z-POS: ${(mVal*100).toFixed(0)}`, w - 14, h - 14);
 
       time += 0.02;
       frameId = requestAnimationFrame(render);
@@ -119,92 +119,88 @@ const VesselFinalShippable = () => {
   }, [bypass]);
 
   return (
-    <div className="min-h-screen bg-[#b0b0b0] flex items-center justify-center font-sans p-8 select-none">
+    <div className="min-h-screen bg-[#f0f0f0] flex items-center justify-center font-sans p-8 select-none">
       
-      {/* CHASSIS: Ceramic White with Noise Texture */}
-      <div className="w-[760px] bg-[#efefed] rounded-[3px] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.35),0_0_0_1px_rgba(255,255,255,0.2)] flex flex-col relative overflow-hidden border-t border-white/60">
+      {/* CHASSIS: Clean White/Grey Industrial */}
+      <div className="w-[820px] bg-[#f4f4f4] rounded-sm shadow-[0_40px_80px_-20px_rgba(0,0,0,0.15),0_0_0_1px_rgba(0,0,0,0.05)] flex flex-col relative overflow-hidden">
         
-        {/* Texture Overlay (Crucial for the 'Hardware' look) */}
-        <div className="absolute inset-0 opacity-[0.04] pointer-events-none z-50 mix-blend-multiply" 
-             style={{backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`}}>
+        {/* --- HEADER STRIP --- */}
+        <div className="h-10 bg-[#f8f8f8] border-b border-[#e5e5e5] flex justify-between items-center px-4">
+            <div className="flex items-center gap-3">
+                 <div className="w-4 h-4 rounded-full bg-[#e0e0e0] flex items-center justify-center text-[#999]"><X size={10} strokeWidth={3}/></div>
+                 <Activity size={14} className="text-[#666]" />
+            </div>
+            <div className={`w-2 h-2 rounded-full transition-all duration-300 ${bypass ? 'bg-[#ddd]' : 'bg-[#00ff41] shadow-[0_0_8px_#00ff41]'}`}></div>
         </div>
 
-        {/* --- UPPER DECK: MONITORING & CALIBRATION --- */}
-        <div className="h-[260px] flex bg-[#f7f7f5]">
+        {/* --- UPPER DECK: MONITOR & CONTROLS --- */}
+        <div className="h-[320px] flex bg-[#fbfbfb]">
             
-            {/* LEFT: SCREEN (Monitoring) */}
-            <div className="flex-1 p-8 flex flex-col justify-center relative border-r border-[#e0e0e0]">
-                <Screw tl /> <Screw bl />
-                
-                {/* Screen Header */}
-                <div className="flex justify-between items-center mb-3 px-1">
-                    <Label icon={<Activity size={10}/>}>Core Monitor</Label>
-                    <div className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${bypass ? 'bg-[#ccc]' : 'bg-[#00ff41] shadow-[0_0_6px_#00ff41]'}`}></div>
-                </div>
-                
-                {/* Deep Inset Screen */}
-                <div className="flex-1 bg-[#e8e8e6] rounded-[2px] shadow-[inset_0_2px_8px_rgba(0,0,0,0.1)] p-[4px] border border-[#fff] relative">
-                    <div className="w-full h-full bg-[#dcdcd9] relative overflow-hidden border border-[#bfbfbd] rounded-[1px]">
+            {/* LEFT: SCREEN AREA */}
+            <div className="flex-1 p-8 flex items-center justify-center border-r border-[#ececec]">
+                <div className="bg-[#dcdcdc] p-2 shadow-inner rounded-sm w-full h-full max-h-[220px] flex items-center justify-center">
+                    <div className="w-full h-full bg-[#c8c8c6] relative overflow-hidden border border-[#bbb] shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]">
                         <canvas ref={canvasRef} className="w-full h-full opacity-90 mix-blend-multiply" />
-                        <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent pointer-events-none"></div>
                     </div>
                 </div>
             </div>
 
-            {/* RIGHT: THE LAB (Controls) */}
-            <div className="w-[280px] bg-[#f0f0ee] p-8 flex flex-col justify-between relative">
-                <Screw tr /> <Screw br />
-
-                {/* 1. PRESET & SOURCE */}
-                <div className="flex justify-between items-start border-b border-[#e0e0e0] pb-5">
+            {/* RIGHT: CONTROL LAB */}
+            <div className="w-[340px] bg-[#f7f7f7] p-8 flex flex-col justify-center gap-8">
+                
+                {/* ROW 1: PRESET & DRIVE */}
+                <div className="flex justify-between items-end">
                     <div className="flex flex-col gap-2">
-                        <Label>Preset</Label>
-                        <div className="bg-[#e2e2e0] rounded-[2px] border border-[#dcdcdc] shadow-inner flex items-center p-1 w-20 justify-between">
-                             <div className="font-mono text-[10px] font-bold text-[#333] pl-1">P-{preset.toString().padStart(2, '0')}</div>
-                             <div className="flex flex-col">
-                                 <button onClick={() => changePreset(1)} className="text-[#888] hover:text-[#333]"><ChevronUp size={8}/></button>
-                                 <button onClick={() => changePreset(-1)} className="text-[#888] hover:text-[#333]"><ChevronDown size={8}/></button>
+                        <Label>PRESET</Label>
+                        <div className="bg-[#e8e8e8] h-[36px] w-28 rounded flex items-center justify-between px-3 border border-[#dcdcdc] shadow-sm">
+                             <span className="font-bold text-[#333] text-sm">P-{preset.toString().padStart(2, '0')}</span>
+                             <div className="flex flex-col -mr-1">
+                                 <button onClick={() => changePreset(1)} className="text-[#999] hover:text-[#555] active:text-black"><ChevronUp size={12}/></button>
+                                 <button onClick={() => changePreset(-1)} className="text-[#999] hover:text-[#555] active:text-black"><ChevronDown size={12}/></button>
                              </div>
                         </div>
                     </div>
-                    
-                    <ControlGroup label="DRIVE">
+                    <div className="flex flex-col gap-2 w-32">
+                        <Label>DRIVE</Label>
                         <TrimmerKnob value={drive} onChange={setDrive} />
-                    </ControlGroup>
+                    </div>
                 </div>
 
-                {/* 2. SHAPING BLOCK */}
-                <div className="flex justify-between items-start pt-1">
-                    <ControlGroup label="FREQ">
+                {/* ROW 2: FREQ & RESO */}
+                <div className="flex justify-between items-end border-t border-[#eee] pt-6">
+                    <div className="flex flex-col gap-2 w-32">
+                        <Label>FREQ</Label>
                         <TrimmerKnob value={cutoff} onChange={setCutoff} />
-                    </ControlGroup>
-                    <ControlGroup label="RESO">
+                    </div>
+                    <div className="flex flex-col gap-2 w-32">
+                        <Label>RESO</Label>
                         <TrimmerKnob value={res} onChange={setRes} />
-                    </ControlGroup>
+                    </div>
                 </div>
 
-                {/* 3. MODE BLOCK */}
-                <div className="space-y-2 mt-1">
-                    <Label icon={<Zap size={10}/>}>Circuit</Label>
+                {/* ROW 3: CIRCUIT */}
+                <div className="flex flex-col gap-2 border-t border-[#eee] pt-6">
+                    <Label icon={<Zap size={10} className="mr-1"/>}>CIRCUIT</Label>
                     <SlideSwitch value={circuit} onChange={setCircuit} options={["LIN", "SAT", "FLD"]} />
                 </div>
+
             </div>
         </div>
 
-        {/* --- LOWER DECK: PERFORMANCE --- */}
-        <div className="h-[120px] bg-[#e6e6e4] border-t border-[#d4d4d2] relative flex flex-col justify-center px-10 shadow-[inset_0_3px_6px_rgba(0,0,0,0.03)]">
+        {/* --- LOWER DECK: PERFORMANCE STRIP --- */}
+        <div className="h-[140px] bg-[#ebebeb] border-t border-[#dcdcdc] relative flex flex-col justify-center px-12 shadow-[inset_0_4px_10px_rgba(0,0,0,0.03)]">
             
-            <div className="flex items-center gap-8">
+            <div className="flex items-center gap-10 h-full">
                 
-                {/* FLUX KNOB (LFO/Movement) - Placed next to Morph for "Motion" context */}
-                <div className="flex flex-col items-center gap-2 w-16">
-                    <Knob value={flux} onChange={setFlux} size="medium" />
-                    <span className="text-[9px] font-bold text-[#999] tracking-widest">FLUX</span>
+                {/* FLUX CONTROL (Left) */}
+                <div className="flex flex-col items-center gap-3">
+                    <FluxKnob value={flux} onChange={setFlux} />
+                    <span className="text-[10px] font-bold text-[#888] tracking-widest uppercase">Flux</span>
                 </div>
 
-                {/* MORPH SLIDER (The Main Event) */}
-                <div className="flex-1 flex flex-col gap-2 pt-1">
-                    <div className="flex justify-between text-[8px] font-bold text-[#aaa] px-1 font-mono">
+                {/* MAIN FADER (Center) */}
+                <div className="flex-1 flex flex-col gap-3 pt-2">
+                    <div className="flex justify-between text-[9px] font-bold text-[#999] px-0.5 tracking-wider">
                         <span>START</span>
                         <span>INTERPOLATION</span>
                         <span>END</span>
@@ -212,20 +208,28 @@ const VesselFinalShippable = () => {
                     <PrecisionFader value={morph} onChange={setMorph} />
                 </div>
 
+                {/* OUTPUT & POWER (Right) */}
+                <div className="flex flex-col items-end gap-3 pl-4">
+                     <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-bold text-[#888] tracking-widest uppercase">OUT</span>
+                        <TrimmerKnob value={output} onChange={setOutput} width="w-16" />
+                     </div>
+                     <div className="pt-2">
+                        <Power 
+                            size={18} 
+                            className={`cursor-pointer transition-colors duration-200 ${bypass ? 'text-[#999]' : 'text-[#333]'}`}
+                            onClick={() => setBypass(!bypass)}
+                        />
+                     </div>
+                </div>
+
             </div>
             
-            {/* Output Trim (Safety First) */}
-            <div className="absolute bottom-3 right-10 flex items-center gap-4">
-                <div className="flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity group">
-                    <span className="text-[8px] font-bold uppercase">Out</span>
-                    <TrimmerKnob value={output} onChange={setOutput} width="w-12" />
-                </div>
-                <Power 
-                    size={12} 
-                    className={`cursor-pointer transition-colors ${bypass ? 'text-[#bbb]' : 'text-[#333]'}`}
-                    onClick={() => setBypass(!bypass)}
-                />
-            </div>
+        </div>
+
+        {/* --- TEXTURE OVERLAY --- */}
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none z-50 mix-blend-multiply" 
+             style={{backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`}}>
         </div>
 
       </div>
@@ -233,134 +237,128 @@ const VesselFinalShippable = () => {
   );
 };
 
-// --- ATOMIC COMPONENTS ---
+// --- COMPONENT LIBRARY ---
 
 const Label = ({ children, icon }) => (
-    <div className="text-[9px] font-bold text-[#999] uppercase tracking-widest flex items-center gap-2 mb-1 select-none">
+    <div className="text-[10px] font-bold text-[#999] uppercase tracking-widest flex items-center select-none">
         {icon}
         {children}
     </div>
 );
 
-const ControlGroup = ({ label, children }) => (
-    <div className="flex flex-col gap-2 group w-[45%]">
-        <span className="text-[9px] font-bold text-[#999] group-hover:text-[#555] transition-colors pl-1">{label}</span>
-        {children}
-    </div>
+const Zap = ({size, className}) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
 );
 
-const Screw = ({ tl, tr, bl, br }) => {
-    const pos = tl ? "top-3 left-3" : tr ? "top-3 right-3" : bl ? "bottom-3 left-3" : "bottom-3 right-3";
-    return (
-        <div className={`absolute ${pos} w-2.5 h-2.5 rounded-full bg-[#dcdcdc] flex items-center justify-center shadow-[inset_1px_1px_1px_#fff,0_1px_1px_rgba(0,0,0,0.1)] opacity-60`}>
-             <div className="w-[1px] h-[60%] bg-[#aaa] rotate-45"></div>
-             <div className="h-[1px] w-[60%] bg-[#aaa] rotate-45 absolute"></div>
-        </div>
-    );
-}
-
-// 1. HERO FADER (Mechanical Snap)
+// 1. PRECISION FADER (Long Horizontal)
 const PrecisionFader = ({ value, onChange }) => {
     const handleDrag = (e) => {
         if(e.buttons !== 1) return;
         const rect = e.currentTarget.getBoundingClientRect();
         let v = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-        // 5% Snap logic for tactile feel
-        v = Math.round(v / 5) * 5;
-        onChange(v);
+        onChange(v); // Smooth, no snap
     };
 
     return (
         <div 
-            className="h-8 w-full relative cursor-ew-resize group"
+            className="h-10 w-full relative cursor-ew-resize group flex items-center"
             onMouseMove={handleDrag}
             onMouseDown={handleDrag}
         >
-            {/* Track */}
-            <div className="absolute top-1/2 left-0 w-full h-[4px] bg-[#ccc] -translate-y-1/2 rounded-full shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]"></div>
-            <div className="absolute top-1/2 left-0 h-[4px] bg-[#333] -translate-y-1/2 rounded-full" style={{width: `${value}%`}}></div>
+            {/* Track Line */}
+            <div className="absolute w-full h-[3px] bg-[#ccc] rounded-full overflow-hidden">
+                 <div className="h-full bg-[#444]" style={{width: `${value}%`}}></div>
+            </div>
             
             {/* Ticks */}
-            <div className="absolute top-1/2 left-0 w-full h-3 -translate-y-1/2 pointer-events-none flex justify-between px-[1px]">
+            <div className="absolute w-full h-full pointer-events-none flex justify-between px-[1px] items-center">
                {[...Array(21)].map((_, i) => (
-                   <div key={i} className={`w-[1px] bg-[#999] ${i % 5 === 0 ? 'h-3' : 'h-1 opacity-50'}`}></div>
+                   <div key={i} className={`w-[1px] bg-[#999] ${i % 10 === 0 ? 'h-4 opacity-80' : i % 5 === 0 ? 'h-2.5 opacity-60' : 'h-1.5 opacity-30'}`}></div>
                ))}
             </div>
 
-            {/* Cap */}
+            {/* Handle */}
             <div 
-                className="absolute top-1/2 h-5 w-10 bg-[#fcfcfc] -translate-y-1/2 -translate-x-1/2 rounded-[1px] shadow-[0_2px_4px_rgba(0,0,0,0.2),inset_0_1px_0_#fff,0_0_0_1px_rgba(0,0,0,0.05)] flex flex-col items-center justify-center z-10 transition-transform active:scale-95 border border-[#ddd]"
+                className="absolute w-12 h-6 bg-white border border-[#ccc] shadow-[0_2px_5px_rgba(0,0,0,0.15)] rounded-[2px] flex items-center justify-center z-10 -translate-x-1/2 cursor-grab active:cursor-grabbing hover:border-[#bbb] transition-transform active:scale-95"
                 style={{ left: `${value}%` }}
             >
-                <div className="absolute top-[-2px] w-[2px] h-[4px] bg-[#ff4400]"></div>
-                <div className="w-full h-[1px] bg-[#e0e0e0]"></div>
+                <div className="w-[2px] h-[10px] bg-[#ff4400] opacity-80"></div>
             </div>
         </div>
     );
 };
 
-// 2. FLUSH KNOB (Used for Flux)
-const Knob = ({ value, onChange, size="small" }) => {
-    const handleDrag = (e) => {
-        if(e.buttons !== 1) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        const v = Math.max(0, Math.min(100, 100 - ((e.clientY - rect.top)/rect.height)*100));
-        onChange(Math.round(v));
-    };
-
-    return (
-        <div 
-            className={`w-full h-8 bg-[#e8e8e6] rounded-full relative cursor-ns-resize flex items-center justify-center shadow-[0_2px_5px_rgba(0,0,0,0.1),inset_0_1px_0_#fff] border border-[#dcdcdc] hover:border-[#ccc] transition-colors`}
-            onMouseMove={handleDrag}
-        >
-            <div className="absolute top-0 left-0 w-full h-full">
-                 <div 
-                    className="w-1.5 h-1.5 bg-[#333] rounded-full absolute top-[20%] left-1/2 -translate-x-1/2 origin-[50%_150%]" 
-                    style={{ transform: `translateX(-50%) rotate(${(value * 2.8) - 140}deg)` }}
-                 ></div>
-            </div>
-        </div>
-    );
-};
-
-// 3. TRIMMER KNOB (Used for Calibration)
+// 2. TRIMMER KNOB (Linear Slider style)
 const TrimmerKnob = ({ value, onChange, width="w-full" }) => {
     const handleDrag = (e) => {
         if(e.buttons !== 1) return;
         const rect = e.currentTarget.getBoundingClientRect();
-        const v = Math.max(0, Math.min(100, 100 - ((e.clientY - rect.top)/rect.height)*100));
+        const v = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
         onChange(Math.round(v));
     };
 
     return (
         <div 
-            className={`${width} h-7 bg-[#e2e2e0] rounded-[2px] border border-[#dcdcdc] relative cursor-ns-resize flex items-center px-1 shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] overflow-hidden hover:border-[#ccc] transition-colors`}
+            className={`${width} h-[36px] bg-[#e6e6e6] rounded-[3px] relative cursor-ew-resize flex items-center overflow-hidden hover:bg-[#e2e2e2] transition-colors`}
             onMouseMove={handleDrag}
+            onMouseDown={handleDrag}
         >
-            <div className="h-full bg-[#d4d4d2] absolute left-0 top-0 transition-all duration-75 ease-out" style={{ width: `${value}%` }}></div>
-            <div className="relative z-10 text-[9px] font-bold text-[#444] w-full text-right pr-2 font-mono select-none">{Math.floor(value)}</div>
-            <div className="absolute top-0 bottom-0 w-[2px] bg-[#ff4400] transition-all duration-75 ease-out shadow-[0_0_2px_rgba(0,0,0,0.1)]" style={{ left: `${value}%` }}></div>
+            {/* Indicator Line */}
+            <div className="absolute top-2 bottom-2 w-[3px] bg-[#ff4400] z-10 pointer-events-none shadow-[0_0_2px_rgba(0,0,0,0.1)] transition-all duration-75" style={{ left: `calc(${value}% - 1.5px)` }}></div>
+            
+            {/* Value Text */}
+            <div className="absolute right-3 text-xs font-bold text-[#444] pointer-events-none tabular-nums opacity-60">{Math.round(value)}</div>
         </div>
     );
 };
 
-// 4. SLIDE SWITCH (Modes)
+// 3. FLUX KNOB (Circular Capsule)
+const FluxKnob = ({ value, onChange }) => {
+    const handleDrag = (e) => {
+        if(e.buttons !== 1) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        // Drag up/down logic
+        const delta = ((e.movementY) * -1); 
+        const newVal = Math.max(0, Math.min(100, value + delta));
+        onChange(newVal);
+    };
+
+    return (
+        <div 
+            className="w-16 h-8 bg-[#e8e8e8] rounded-full border border-[#dcdcdc] shadow-[inset_0_1px_3px_rgba(0,0,0,0.05)] flex items-center p-1 relative cursor-ns-resize group hover:border-[#ccc]"
+            onMouseMove={handleDrag}
+            onMouseDown={handleDrag}
+        >
+            <div 
+                className="h-full aspect-square rounded-full bg-[#333] shadow-sm transform transition-transform duration-75 ease-out"
+                style={{ transform: `translateX(${value * 0.32}px)` }} // 32px is roughly range inside 64px width
+            ></div>
+        </div>
+    );
+};
+
+// 4. SLIDE SWITCH (Segmented Control)
 const SlideSwitch = ({ value, onChange, options }) => {
     return (
-        <div className="relative w-full h-6 bg-[#e0e0de] rounded-[2px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)] flex items-center p-[2px] cursor-pointer border border-[#fff]">
-            <div 
-                className="absolute top-[2px] bottom-[2px] w-[33%] bg-[#fcfcfc] rounded-[1px] shadow-[0_1px_2px_rgba(0,0,0,0.15)] transition-all duration-150 ease-out z-10 border border-[#eee]"
-                style={{ left: `${value * 33.33}%` }}
-            ></div>
-            {options.map((opt, i) => (
+        <div className="w-full h-[36px] bg-[#e6e6e6] rounded-[3px] flex items-center p-1 cursor-pointer">
+            <div className="relative w-full h-full flex items-center">
+                 {/* Moving Background */}
                 <div 
-                    key={i} 
-                    className={`flex-1 text-center text-[8px] font-bold z-20 relative select-none transition-colors ${value === i ? 'text-[#222]' : 'text-[#999]'}`}
-                    onClick={() => onChange(i)}
-                >
-                    {opt}
-                </div>
-            ))}
+                    className="absolute top-0 bottom-0 w-[33.33%] bg-white rounded-[2px] shadow-sm transition-all duration-200 ease-out border border-[#ddd]"
+                    style={{ left: `${value * 33.33}%` }}
+                ></div>
+                
+                {/* Labels */}
+                {options.map((opt, i) => (
+                    <div 
+                        key={i} 
+                        className={`flex-1 text-center text-[10px] font-bold z-10 transition-colors uppercase tracking-wide select-none ${value === i ? 'text-[#222]' : 'text-[#888]'}`}
+                        onClick={() => onChange(i)}
+                    >
+                        {opt}
+                    </div>
+                ))}
+            </div>
         </div>
     );
 };

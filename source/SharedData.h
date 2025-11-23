@@ -27,7 +27,12 @@ struct SystemState {
     float outputRMS = 0.0f;     // For reactive wireframe scaling
     float outputPeak = 0.0f;    // For clipping detection
     int modeIndex = 0;
-    float centroidX = 0.5f; // Tension
-    float centroidY = 0.5f; // Hardness
-    float transformZ = 0.0f; // Trans
+    float centroidX = 0.5f; // Tension (Input)
+    float centroidY = 0.5f; // Hardness (Input)
+    
+    // Z-Plane Engine State (Result)
+    float morph = 0.0f;
+    float freq = 0.0f;
+    float transformZ = 0.0f;
+    int morphPair = 0;
 };

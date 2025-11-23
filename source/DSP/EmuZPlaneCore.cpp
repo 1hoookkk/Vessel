@@ -85,10 +85,18 @@ BiquadCoeffs ARMAdilloEngine::decode_section(const ZPlaneSection& params, float 
 
     // 1. Decode Resonance (k2)
     // Map k2 through a gentle curve to bias toward stable radii while allowing high-Q peaks.
-    float R = std::pow(std::clamp(params.k2, 0.0f, 1.0f), 1.35f) * 0.995f;
-    R = std::clamp(R, 0.10f, 0.995f);
-    float b2_real = -(R * R); // Standard biquad convention: b2 is negative for stability
+    // CRITICAL: At extreme k2 (0.98+), apply safety limiter to prevent instability
+    float k2_clamped = std::clamp(params.k2, 0.0f, 1.0f);
+    float R = std::pow(k2_clamped, 1.35f) * 0.995f;
 
+    // SAFETY: Above k2=0.95, compress the curve to prevent runaway resonance
+    if (k2_clamped > 0.95f) {
+        float excess = (k2_clamped - 0.95f) / 0.05f; // 0-1 in danger zone
+        float compressed = 0.95f + excess * 0.035f;  // Map 0.95-1.0 → 0.95-0.985
+        R = std::pow(compressed, 1.35f) * 0.995f;
+    }
+
+    R = std::clamp(R, 0.10f, 0.988f); // Hard limit: never exceed 0.988
     // 2. Decode Frequency (k1) -> theta at CURRENT sample rate
     // k1 is sample-rate independent (normalized log scale: 20Hz-20kHz)
     // We convert k1 → Hz → theta using the current sampleRate.
@@ -100,12 +108,22 @@ BiquadCoeffs ARMAdilloEngine::decode_section(const ZPlaneSection& params, float 
     // 3. Calculate Feedback 1 (b1)
     float b1_real = 2.0f * R * std::cos(theta);
 
+    // CRITICAL FIX: Prevent coefficient overflow at extreme parameters
+    // At high resonance + high frequency, b1 can exceed Q15 range [-1.0, 1.0)
+    // Scale all coefficients if b1 would overflow
+    float coeff_scale = 1.0f;
+    if (std::abs(b1_real) > 0.99f) {
+        coeff_scale = 0.99f / std::abs(b1_real);
+        b1_real *= coeff_scale;
+    }
+
     // 4. Feedforward: RESONATOR topology (not bandpass!)
     // CRITICAL FIX: E-mu uses resonators that ADD peaks without killing signal
     // Bandpass (a0=-a2) kills fundamentals when cascaded
     // Resonator (a0=1, a2=0) passes signal through while poles create formant peaks
     float cascadeGain = 1.0f / 7.0f; // Divide by section count to prevent clipping
-    float a0_real = cascadeGain * params.gain;
+    float b2_real = -(R * R) * coeff_scale; // Apply overflow scaling
+    float a0_real = cascadeGain * params.gain * coeff_scale; // Apply overflow scaling
     float a1_real = 0.0f;
     float a2_real = 0.0f; // ZERO - this is the key difference from bandpass
 

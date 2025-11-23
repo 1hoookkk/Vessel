@@ -17,11 +17,15 @@ FetchContent_MakeAvailable(JUCE)
 
 # 2. HEAVY Core Library 
 # (Strict H-Chip Architecture - No Modern Physics/Exciter files)
+add_subdirectory(foleys_gui_magic)
+
 add_library(Heavy_Core STATIC
     source/PluginProcessor.cpp
     source/PluginProcessor.h
-    source/PluginEditor.cpp
-    source/PluginEditor.h
+    source/Components/VesselXYPad.cpp
+    source/Components/VesselXYPad.h
+    source/Components/VesselGlassCube.cpp
+    source/Components/VesselGlassCube.h
     
     # The Digital Archaeology Core (H-Chip Emulation)
     source/DSP/EmuHChipFilter.h
@@ -32,8 +36,6 @@ add_library(Heavy_Core STATIC
     source/DSP/EMUStaticShapeBank.h
     source/DSP/EMUStaticShapeBank.cpp
     source/DSP/EMUAuthenticTables.h
-    source/DSP/MaterialPhysics.h
-    source/DSP/ExciterEngine.h
     source/DSP/IZPlaneEngine.h
 
     # Shared Data & Utilities
@@ -42,9 +44,6 @@ add_library(Heavy_Core STATIC
     source/Utility/WaitFreeTripleBuffer.h
 
     # UI Components
-    source/UI/RadarScope.h
-    source/UI/HeavyBar.h
-    source/UI/HeavyComponents.h
     source/VesselStyle.h
 
     # Utilities (Visualizer helper math)
@@ -57,6 +56,7 @@ target_include_directories(Heavy_Core PUBLIC source)
 
 # Dependencies
 target_link_libraries(Heavy_Core PUBLIC
+    foleys_gui_magic
     juce::juce_audio_utils
     juce::juce_dsp
     juce::juce_gui_basics
