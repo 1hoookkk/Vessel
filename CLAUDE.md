@@ -86,3 +86,5 @@ Coding Constraints
     NO Standard Libraries: Do not use juce::dsp::IIR.
 
     Thread Safety: Audio thread owns the int32 state. UI thread owns the float target parameters. Sync via std::atomic or SPSC queue.
+
+    

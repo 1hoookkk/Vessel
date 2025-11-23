@@ -74,7 +74,7 @@ void HeavyEditor::paint (juce::Graphics& g)
     auto screenRect = topArea.removeFromLeft(500).reduced(0, 10);
     
     // Draw Inset Bezel
-    Vessel::drawRecessedTrack(g, screenRect);
+    Vessel::drawRecessedTrack(g, screenRect.toFloat());
     
     // 1. Render POLES to Oil Buffer
     // This runs on UI thread, but gets atomic data from processor
@@ -162,7 +162,7 @@ std::vector<juce::Point<float>> HeavyProcessor::getDisplayPoles() const
 
     // 1. READ SAFE STATE (Wait-Free)
     // We get the most recent valid audio state without locking the audio thread
-    SystemState uiState = tripleBuffer.getBackBuffer(); 
+    SystemState uiState = tripleBuffer.getCurrentState(); 
 
     // 2. GENERATE VISUALIZATION
     // Since we want the "Z-Plane" look, we calculate based on the current morph parameters.

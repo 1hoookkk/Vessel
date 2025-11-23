@@ -68,8 +68,10 @@ inline float q31_to_float(int32_t x) {
 }
 
 // ARTIFACT GENERATOR: Float -> Int16 (Q15) Truncation
+// HALF-SCALE TRICK: Biquad coeffs can go to ±1.9, but Q15 only stores ±1.0
+// We store 0.5x the value, then shift 1 less bit during MAC to compensate
 inline int16_t float_to_q15_truncated(float x) {
-    float scaled = x * 32768.0f;
+    float scaled = (x * 0.5f) * 32768.0f; // Scale by 0.5 to fit ±1.9 into ±1.0 range
     if (scaled > 32767.0f) scaled = 32767.0f;
     if (scaled < -32768.0f) scaled = -32768.0f;
     return (int16_t)scaled;
@@ -277,42 +279,43 @@ inline void process_block(HChipFilter* filter, float* data, int numSamples, cons
             // 2. ARITHMETIC LOGIC (H-Chip Emulation)
             // TDF-II Equation 1: y[n] = b0*x[n] + z1[n-1]
             // Math: Q15 * Q31 = Q46. Need int64 accumulator.
-            
+
             int64_t acc;
-            
+
             // Term: b0 * x[n]
             acc = (int64_t)c->b0 * (int64_t)signal;
-            
+
             // Add State z1 (Shifted to match Q46 accumulator alignment)
-            // Note: State is stored in Q31. To add to Q46 accumulator, 
+            // Note: State is stored in Q31. To add to Q46 accumulator,
             // we conceptually treat state as already aligned or shift the product down.
-            // STANDARD H-CHIP APPROACH: Shift product down to Q31 before add/output.
-            
-            int32_t term_b0 = (int32_t)(acc >> 15); // Bit Shift Right 15
-            
+            // HALF-SCALE COMPENSATION: Coeffs are stored at 0.5x, so shift by 14 instead of 15
+            // This gives us 2x gain to restore the original magnitude
+
+            int32_t term_b0 = (int32_t)(acc >> 14); // Bit Shift Right 14 (was 15)
+
             // y_raw is the potential output before clipping
             int64_t y_raw = (int64_t)term_b0 + (int64_t)st->z1;
 
             // 3. INTER-STAGE SATURATION (The "Growl")
-            // Logic: Hard clip internal node 'y'. 
+            // Logic: Hard clip internal node 'y'.
             // If Resonance is high, this node clips, creating odd harmonics.
             int32_t y_clipped = hard_clip_q31(y_raw);
 
             // 4. STATE UPDATES (TDF-II)
-            
+
             // Equation 2: z1[n] = b1*x[n] - a1*y[n] + z2[n-1]
             // We use y_clipped for feedback math to ensure the "Distorted Formant" behavior
-            
-            int64_t term_b1 = ((int64_t)c->b1 * (int64_t)signal) >> 15;
-            int64_t term_a1 = ((int64_t)c->a1 * (int64_t)y_clipped) >> 15;
-            
+
+            int64_t term_b1 = ((int64_t)c->b1 * (int64_t)signal) >> 14;
+            int64_t term_a1 = ((int64_t)c->a1 * (int64_t)y_clipped) >> 14;
+
             // Update z1
             st->z1 = hard_clip_q31(term_b1 - term_a1 + st->z2);
 
             // Equation 3: z2[n] = b2*x[n] - a2*y[n]
-            
-            int64_t term_b2 = ((int64_t)c->b2 * (int64_t)signal) >> 15;
-            int64_t term_a2 = ((int64_t)c->a2 * (int64_t)y_clipped) >> 15;
+
+            int64_t term_b2 = ((int64_t)c->b2 * (int64_t)signal) >> 14;
+            int64_t term_a2 = ((int64_t)c->a2 * (int64_t)y_clipped) >> 14;
             
             // Update z2
             st->z2 = hard_clip_q31(term_b2 - term_a2);

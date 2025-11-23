@@ -13,7 +13,7 @@
 
 juce::AudioProcessorEditor* HeavyProcessor::createEditor()
 {
-    return new HeavyEditor(*this, treeState);
+    return new HeavyEditor(*this);
 }
 
 bool HeavyProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
@@ -334,9 +334,9 @@ ZPlaneParams HeavyProcessor::updateVoicePhysics(float tension, float hardness, f
     params.freq      = juce::jlimit(0.0f, 1.0f, 0.25f * focusY + 0.75f * k1); // heavy weight on tension
     params.trans     = juce::jlimit(0.0f, 1.0f, 0.35f * focusZ + 0.65f * k2); // keep alloy flavor
     params.intensity = 1.0f;
-    // Drive: map hardness to input gain (0-18dB boost)
-    // Higher hardness = hotter signal into resonators = more excitation
-    params.driveDb   = h * 18.0f;
+    // Drive: DISABLED for testing - int32 has zero headroom, +18dB creates square wave clipping
+    // Let the resonance peaks create the grit instead
+    params.driveDb   = 0.0f;
 
     return params;
 }
