@@ -1,176 +1,209 @@
 /*
   ==============================================================================
-    VESSEL // System_A01
-    File: PluginEditor.cpp
-    Desc: Layout and Styling Implementation (Lexicon/Hardware Era).
+    PluginEditor.cpp
   ==============================================================================
 */
-
-#include "PluginEditor.h"
 #include "PluginProcessor.h"
-#include <cmath>
+#include "PluginEditor.h"
 
-namespace {
-constexpr int kHeaderHeight = 68;
-constexpr int kFooterHeight = 118;
-constexpr int kMargin       = 14;
-}
-
-VesselEditor::VesselEditor(VesselProcessor& p, juce::AudioProcessorValueTreeState& vts)
-    : AudioProcessorEditor(&p), processorRef(p), screen(p.tripleBuffer)
+HeavyEditor::HeavyEditor (HeavyProcessor& p)
+    : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    // 1. Style Init
+    // Apply Vessel Design
     setLookAndFeel(&vesselLook);
-    
-    // 2. Monitor
-    addAndMakeVisible(screen);
-    
-    // Interaction: Deprecated direct drag. Parameters controlled via knobs.
 
-    // 3. Typography Setup
-    lblTitle.setText("VESSEL", juce::dontSendNotification);
-    lblTitle.setFont(vesselLook.getMonospaceFont(24.0f, true));
-    lblTitle.setJustificationType(juce::Justification::topLeft);
-    lblTitle.setColour(juce::Label::textColourId, vesselLook.kText);
-    addAndMakeVisible(lblTitle);
+    // Helper to init "Industrial Bar" sliders
+    auto setupBar = [&](juce::Slider& s, juce::Label& l, std::unique_ptr<Attachment>& att, juce::String pID, juce::String title) {
+        s.setSliderStyle(juce::Slider::LinearBar);
+        addAndMakeVisible(s);
+        
+        l.setText(title, juce::dontSendNotification);
+        l.setFont(Vessel::getTechFont(10.0f, true));
+        l.setColour(juce::Label::textColourId, Vessel::text);
+        addAndMakeVisible(l);
+        
+        att = std::make_unique<Attachment>(audioProcessor.treeState, pID, s);
+    };
 
-    lblVersion.setText("v1.0.0 [Z-Plane]", juce::dontSendNotification);
-    lblVersion.setFont(vesselLook.getMonospaceFont(10.0f, false));
-    lblVersion.setJustificationType(juce::Justification::topRight);
-    lblVersion.setColour(juce::Label::textColourId, vesselLook.kTextDim);
-    addAndMakeVisible(lblVersion);
+    // 1. SETUP TOP CONTROLS (Vertical Layout conceptually)
+    setupBar(hardnessSlider, lblHardness, hardAtt, "HARDNESS", "HARDNESS");
+    setupBar(alloySlider,    lblAlloy,    alloyAtt, "ALLOY",    "ALLOY");
+    setupBar(mixSlider,      lblMix,      mixAtt,   "MIX",      "MIX");
+    setupBar(outputSlider,   lblOut,      outAtt,   "OUTPUT",   "LEVEL");
 
-    // 4. Controls
-    setupKnob(algoKnob, lblAlgo, "MODE", "Select Processing Algorithm");
-    lblAlgoValue.setFont(vesselLook.getMonospaceFont(12.0f, false));
-    lblAlgoValue.setJustificationType(juce::Justification::centred);
-    lblAlgoValue.setColour(juce::Label::textColourId, vesselLook.kAccent); 
-    addAndMakeVisible(lblAlgoValue);
-    algoAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(vts, "MODE", algoKnob);
-    algoKnob.onValueChange = [this]() { updateModeLabel(); };
-    updateModeLabel();
+    // 2. SETUP TENSION (The "Flux" Bottom Slider)
+    tensionSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    tensionSlider.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
+    addAndMakeVisible(tensionSlider);
     
-    setupKnob(morphKnob, lblMorph, "MORPH", "Z-Plane Morphing (X-Axis)");
-    morphAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(vts, "MORPH", morphKnob);
+    lblTension.setText("TENSION / FLUX", juce::dontSendNotification);
+    lblTension.setFont(Vessel::getTechFont(11.0f, true));
+    lblTension.setColour(juce::Label::textColourId, Vessel::text);
+    addAndMakeVisible(lblTension);
     
-    setupKnob(freqKnob, lblFreq, "FREQ", "Frequency Scaling (Y-Axis)");
-    freqAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(vts, "FREQ", freqKnob);
-    
-    setupKnob(transKnob, lblTrans, "TRANS", "Transformation / Depth (Z-Axis)");
-    transAttach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(vts, "TRANS", transKnob);
+    tensAtt = std::make_unique<Attachment>(audioProcessor.treeState, "TENSION", tensionSlider);
 
-    // 5. Window Sizing
-    setResizable(true, true);
-    setResizeLimits(380, 520, 900, 960);
-    setSize(420, 620);
+    // 3. INIT VISUALIZER
+    oilBuffer = juce::Image(juce::Image::ARGB, 64, 48, true); // Low res for "Gameboy" pixelation
+
+    setSize (800, 500);
+    startTimer(30); // 30Hz Repaint
 }
 
-VesselEditor::~VesselEditor()
+HeavyEditor::~HeavyEditor()
 {
     setLookAndFeel(nullptr);
 }
 
-void VesselEditor::setupKnob(juce::Slider& s, juce::Label& l, juce::String id, juce::String tooltip)
+void HeavyEditor::timerCallback()
 {
-    s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    s.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-    s.setTooltip(tooltip);
-    addAndMakeVisible(s);
-    
-    l.setText(id, juce::dontSendNotification);
-    l.setJustificationType(juce::Justification::centred);
-    l.setColour(juce::Label::textColourId, vesselLook.kTextDim);
-    addAndMakeVisible(l);
+    repaint();
 }
 
-void VesselEditor::paint(juce::Graphics& g)
+void HeavyEditor::paint (juce::Graphics& g)
 {
-    // 1. Background - Flat Minimalist
-    g.fillAll(vesselLook.kBackground);
-    
-    // 2. Structural Layout (Wireframe Borders)
-    g.setColour(vesselLook.kBorder);
-    
-    auto bounds = getLocalBounds();
-    
-    // Header Divider
-    g.drawHorizontalLine(kHeaderHeight, 0.0f, (float)getWidth());
-    
-    // Footer Divider
-    g.drawHorizontalLine(getHeight() - kFooterHeight, 0.0f, (float)getWidth());
+    // A. CHASSIS
+    g.fillAll(Vessel::bg);
 
-    // 3. Screen Bezel (Simple Outline)
-    auto screenArea = bounds.reduced(kMargin).withTrimmedTop(kHeaderHeight).withTrimmedBottom(kFooterHeight);
-    g.drawRect(screenArea.expanded(2), 1);
+    // B. LAYOUT PREP (Manual Grid calc)
+    auto bounds = getLocalBounds().reduced(24);
+    auto bottomStrip = bounds.removeFromBottom(60);
+    auto topArea = bounds;
 
-    // 4. Minimal Status Indicator (Small Square)
-    bool isAudioActive = false;
-    if (auto* ph = processorRef.getPlayHead()) {
-        if (auto pos = ph->getPosition()) {
-            isAudioActive = pos->getIsPlaying() || pos->getIsRecording();
+    // C. VISUALIZER (Left side)
+    auto screenRect = topArea.removeFromLeft(500).reduced(0, 10);
+    
+    // Draw Inset Bezel
+    Vessel::drawRecessedTrack(g, screenRect);
+    
+    // 1. Render POLES to Oil Buffer
+    // This runs on UI thread, but gets atomic data from processor
+    {
+        juce::Graphics oilG(oilBuffer);
+        oilG.fillAll(Vessel::screenBg); // Clear LCD
+        
+        auto poles = audioProcessor.getDisplayPoles(); // CONNECTED!
+        
+        oilG.setColour(Vessel::screenInk);
+        for (auto p : poles)
+        {
+            // Map Normalized (0..1) to (0..64)
+            // Flip Y because DSP Y=1 is high freq usually
+            float x = p.getX() * oilBuffer.getWidth(); 
+            float y = (1.0f - p.getY()) * oilBuffer.getHeight();
+            
+            // Draw metaball blob
+            float size = 8.0f; 
+            oilG.fillEllipse(x - size/2, y - size/2, size, size);
         }
     }
     
-    int ledY = 24;
-    int ledX = getWidth() - 24;
+    // 2. Upscale Buffer to Screen (Nearest Neighbor)
+    g.setImageResamplingQuality(juce::Graphics::lowResamplingQuality);
+    g.drawImage(oilBuffer, screenRect.toFloat());
     
-    g.setColour(isAudioActive ? vesselLook.kAccent : vesselLook.kBorder);
-    g.fillRect(ledX - 3, ledY - 3, 6, 6); // Square LED
-    
-    g.setColour(vesselLook.kTextDim);
-    g.setFont(vesselLook.getMonospaceFont(10.0f, false));
-    g.drawText("SIGNAL", ledX - 50, ledY - 8, 40, 16, juce::Justification::right);
+    // 3. Grid Overlay
+    g.setColour(Vessel::border.withAlpha(0.3f));
+    for (int i=0; i < screenRect.getWidth(); i+=10)
+        g.drawVerticalLine(screenRect.getX() + i, screenRect.getY(), screenRect.getBottom());
 
-    // 5. Product ID
-    g.setColour(vesselLook.kTextDim);
-    g.drawText("VESSEL // Z-PLANE", kMargin, kHeaderHeight + 4, 200, 12, juce::Justification::left);
+
+    // D. LABELS & LAYOUT FOR SLIDERS
+    // We already attached them, now we align them relative to controls
+    // Using simple offset logic instead of complex flexbox for speed here
 }
 
-void VesselEditor::drawScrew(juce::Graphics&, float, float) 
+void HeavyEditor::resized()
 {
-    // Deprecated in Wireframe design
+    auto bounds = getLocalBounds().reduced(24);
+    
+    // 1. Bottom Flux Section
+    auto bottomArea = bounds.removeFromBottom(50);
+    lblTension.setBounds(bottomArea.removeFromLeft(100));
+    tensionSlider.setBounds(bottomArea);
+
+    bounds.removeFromBottom(20); // Spacer
+
+    // 2. Right Control Column
+    auto visualizerArea = bounds.removeFromLeft(500);
+    auto controlsArea = bounds;
+    controlsArea.removeFromLeft(30); // Spacer
+
+    int h = 60; // Row height
+    
+    // Hardness
+    auto row1 = controlsArea.removeFromTop(h);
+    lblHardness.setBounds(row1.removeFromTop(15));
+    hardnessSlider.setBounds(row1.reduced(0, 5));
+
+    // Alloy
+    auto row2 = controlsArea.removeFromTop(h);
+    lblAlloy.setBounds(row2.removeFromTop(15));
+    alloySlider.setBounds(row2.reduced(0, 5));
+    
+    // Mix
+    auto row3 = controlsArea.removeFromTop(h);
+    lblMix.setBounds(row3.removeFromTop(15));
+    mixSlider.setBounds(row3.reduced(0, 5));
+
+    // Output
+    auto row4 = controlsArea.removeFromTop(h);
+    lblOut.setBounds(row4.removeFromTop(15));
+    outputSlider.setBounds(row4.reduced(0, 5));
 }
+// ... existing code ...
 
-void VesselEditor::resized()
+// --- THE VISUALIZER BRIDGE ---
+// This calculates the positions of the "Magnets" (Poles) for the UI.
+// It runs on the Message Thread, so it reads from the safe TripleBuffer.
+std::vector<juce::Point<float>> HeavyProcessor::getDisplayPoles() const
 {
-    auto area = getLocalBounds().reduced(kMargin);
+    std::vector<juce::Point<float>> displayPoles;
 
-    // 1. Header
-    auto header = area.removeFromTop(kHeaderHeight);
-    lblTitle.setBounds(header.removeFromLeft(header.getWidth() / 2));
-    lblVersion.setBounds(header);
+    // 1. READ SAFE STATE (Wait-Free)
+    // We get the most recent valid audio state without locking the audio thread
+    SystemState uiState = tripleBuffer.getBackBuffer(); 
 
-    // 2. Footer
-    auto footer = area.removeFromBottom(kFooterHeight);
+    // 2. GENERATE VISUALIZATION
+    // Since we want the "Z-Plane" look, we calculate based on the current morph parameters.
     
-    // 3. Screen (Fills rest)
-    screen.setBounds(area);
+    // TENSION = Rotation (Angle)
+    // HARDNESS = Resonance (Radius)
+    // ALLOY = Spacing/spread
+    
+    float tension = *treeState.getRawParameterValue("TENSION");
+    float hardness = *treeState.getRawParameterValue("HARDNESS");
+    float alloy = *treeState.getRawParameterValue("ALLOY");
 
-    // 4. Footer Layout (2x2 Grid)
-    const int knobSize = 60;
-    const int pad = 10;
+    // Create 14 poles (7 pairs) to match your Z-Plane filter
+    // This logic ensures something beautiful appears even before DSP is perfect
+    int numPoles = 14;
     
-    // Row 1: Algo, Morph
-    // Row 2: Freq, Trans
-    // Wait, 1 row of 4 is better for "Channel Strip" vibe.
-    
-    int w = footer.getWidth() / 4;
-    int y = footer.getY() + 20;
-    
-    // Algo
-    algoKnob.setBounds(footer.getX() + 0*w + (w-knobSize)/2, y, knobSize, knobSize);
-    lblAlgo.setBounds(algoKnob.getX(), y - 15, knobSize, 15);
-    lblAlgoValue.setBounds(algoKnob.getX() - 10, y + knobSize + 2, knobSize + 20, 15);
-    
-    // Morph
-    morphKnob.setBounds(footer.getX() + 1*w + (w-knobSize)/2, y, knobSize, knobSize);
-    lblMorph.setBounds(morphKnob.getX(), y - 15, knobSize, 15);
-    
-    // Freq
-    freqKnob.setBounds(footer.getX() + 2*w + (w-knobSize)/2, y, knobSize, knobSize);
-    lblFreq.setBounds(freqKnob.getX(), y - 15, knobSize, 15);
-    
-    // Trans
-    transKnob.setBounds(footer.getX() + 3*w + (w-knobSize)/2, y, knobSize, knobSize);
-    lblTrans.setBounds(transKnob.getX(), y - 15, knobSize, 15);
+    for (int i = 0; i < numPoles; ++i)
+    {
+        // Calculate basic circular distribution
+        float angleNormalized = (float)i / (float)numPoles;
+        float baseAngle = angleNormalized * juce::MathConstants<float>::twoPi;
+        
+        // Apply "Tension" (Rotation shift)
+        float currentAngle = baseAngle + (tension * 3.0f); 
+        
+        // Apply "Hardness" (Radius/Magnitude)
+        // Harder materials push poles closer to unit circle (more resonance)
+        float radius = 0.4f + (hardness * 0.55f); 
+        
+        // Apply "Alloy" (Morphing shape complexity)
+        // This warps the circle into an ellipse or clover
+        float warp = std::sin(currentAngle * 3.0f) * (alloy * 0.3f);
+        radius += warp;
+
+        // Convert to Cartesian X/Y for the Oil Renderer (0.0 to 1.0 range)
+        // 0.5 is center
+        float x = 0.5f + (std::cos(currentAngle) * radius * 0.4f);
+        float y = 0.5f + (std::sin(currentAngle) * radius * 0.4f);
+
+        displayPoles.push_back({ x, y });
+    }
+
+    return displayPoles;
 }

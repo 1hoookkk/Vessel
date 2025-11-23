@@ -14,32 +14,8 @@ using dsp_sample_t = int32_t;
 using dsp_accum_t = int64_t; // 67-bit accum in hardware, 64-bit is sufficient for C++ sim
 
 #define Q31_MAX 2147483647
-#define Q31_MIN -2147483648
-#define FIXED_ONE 2147483648.0f
-
-// Saturation Logic: The "sound" of E-mu filters relies on this specific clipping.
-// IMPORTANT: Uses branchless saturation to avoid CPU pipeline stalls.
-inline dsp_sample_t saturate(dsp_accum_t x) {
-    return static_cast<dsp_sample_t>(
-        std::min(std::max(x, static_cast<dsp_accum_t>(Q31_MIN)),
-                 static_cast<dsp_accum_t>(Q31_MAX))
-    );
-}
-
-// Haunted Saturation: Controlled mantissa corruption for vintage digital artifacts
-inline dsp_sample_t haunted_saturate(dsp_accum_t x, float bitDepth = 24.0f) {
-    dsp_sample_t clean = saturate(x);
-
-    if (bitDepth < 31.0f) {
-        int bitsToKeep = static_cast<int>(bitDepth);
-        bitsToKeep = std::max(8, std::min(31, bitsToKeep)); // Safe bounds: 8-31 bits
-        int shift = 31 - bitsToKeep;
-        dsp_sample_t mask = ~((1 << shift) - 1);
-        return clean & mask; // Truncate lower bits
-    }
-
-    return clean;
-}
+#define Q31_MIN (-2147483647 - 1)
+#define FIXED_ONE 2147483647.0f  // INT32_MAX, not 2^31 (prevents overflow)
 
 inline dsp_sample_t float_to_fixed(float f) {
     f = std::min(std::max(f, -1.0f), 1.0f);
@@ -62,6 +38,7 @@ struct ZPlaneSection {
 };
 
 struct ZPlaneFrame {
+    // 14-pole filter = 7 biquad sections (Phase 1.1 spec requirement)
     static const int SECTION_COUNT = 7;
     ZPlaneSection sections[SECTION_COUNT];
 };
@@ -88,63 +65,4 @@ public:
 
 private:
     static float lerp(float a, float b, float t) { return a + t * (b - a); }
-};
-
-// =========================================================
-// 4. The DSP Pipeline (H-Chip Emulation)
-// =========================================================
-
-class EmuHChipFilter {
-private:
-    struct SectionState {
-        dsp_sample_t x1, x2;
-        dsp_sample_t y1, y2;
-    };
-
-    SectionState states[ZPlaneFrame::SECTION_COUNT];
-    float sampleRate;
-
-public:
-    EmuHChipFilter(float initialSampleRate = 48000.0f)
-        : sampleRate(initialSampleRate) {
-        reset();
-    }
-
-    void reset();
-    void setSampleRate(float newSampleRate);
-    float getSampleRate() const;
-
-    // Biquad with haunted saturation in the feedback loop.
-    inline dsp_sample_t process_biquad(dsp_sample_t x, SectionState& s, const BiquadCoeffs& c) {
-        dsp_accum_t acc = 0;
-
-        acc += (dsp_accum_t)x * c.a0;
-        acc += (dsp_accum_t)s.x1 * c.a1;
-        acc += (dsp_accum_t)s.x2 * c.a2;
-
-        acc += (dsp_accum_t)s.y1 * c.b1;
-        acc += (dsp_accum_t)s.y2 * c.b2;
-
-        acc >>= 31;
-
-        dsp_sample_t y = haunted_saturate(acc);
-
-        s.x2 = s.x1;
-        s.x1 = x;
-        s.y2 = s.y1;
-        s.y1 = y;
-
-        return y;
-    }
-
-    void process_block(const ZPlaneCube& cube,
-                       float mod_x, float mod_y, float mod_z,
-                       const std::vector<float>& input,
-                       std::vector<float>& output);
-
-    void process_block(const ZPlaneCube& cube,
-                       float mod_x, float mod_y, float mod_z,
-                       const float* input,
-                       float* output,
-                       int numSamples);
 };

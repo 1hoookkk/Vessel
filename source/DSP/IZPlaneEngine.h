@@ -49,7 +49,7 @@ struct IZPlaneEngine
     // intensity≈0 & drive≈1 & sat≈0 & lfoDepth≈0
     virtual bool isEffectivelyBypassed() const = 0;
     
-    // Visualization
-    virtual std::array<zplane::Pole, 6> getLeftPoles() const = 0;
-    virtual std::array<zplane::Pole, 6> getRightPoles() const = 0;
+    // Visualization (7 biquad sections = 14 poles, returned as 7 L/R pairs)
+    virtual std::array<zplane::Pole, 7> getLeftPoles() const = 0;
+    virtual std::array<zplane::Pole, 7> getRightPoles() const = 0;
 };

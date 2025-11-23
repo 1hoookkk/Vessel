@@ -16,17 +16,18 @@ struct ParticleData {
 };
 
 struct SystemState {
-    // 14-pole (6-stage biquad) filter state
-    std::array<zplane::Pole, 6> leftPoles;
-    std::array<zplane::Pole, 6> rightPoles;
+    // 14-pole (7-stage biquad) filter state
+    std::array<zplane::Pole, 7> leftPoles;
+    std::array<zplane::Pole, 7> rightPoles;
     
     // Simulation State
     ParticleData particles;
     
-    // Real-time Diagnostics
-    float kineticEnergy = 0.0f;
+    // Real-time Diagnostics & Metering
+    float outputRMS = 0.0f;     // For reactive wireframe scaling
+    float outputPeak = 0.0f;    // For clipping detection
     int modeIndex = 0;
-    float centroidX = 0.5f; // Morph
-    float centroidY = 0.5f; // Freq
+    float centroidX = 0.5f; // Tension
+    float centroidY = 0.5f; // Hardness
     float transformZ = 0.0f; // Trans
 };

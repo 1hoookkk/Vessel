@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(VESSEL VERSION 0.1.0)
+project(HEAVY VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,14 +20,18 @@ option(FOLEYS_BUILD_EXAMPLES "Build the examples" OFF)
 option(FOLEYS_BUILD_TESTS "Build and run the unit tests" OFF)
 add_subdirectory(foleys_gui_magic)
 
-# --- Vessel Core Library (for Testing) ---
-add_library(Vessel_Core STATIC
+# --- HEAVY Core Library (for Testing) ---
+add_library(Heavy_Core STATIC
     source/PluginProcessor.cpp
     source/PluginProcessor.h
-    # source/PluginEditor.cpp
-    # source/PluginEditor.h
-    source/PhysicsEngine.h
-    # source/VectorScreen.h
+    source/PluginEditor.cpp
+    source/PluginEditor.h
+    source/HeavyConstants.h
+    source/UI/HeavyComponents.h
+    source/UI/RadarScope.h
+    source/UI/HeavyBar.h
+    source/DSP/MaterialPhysics.h
+    source/DSP/ExciterEngine.h
     source/DSP/AuthenticEMUEngine.h
     source/DSP/EMUAuthenticTables.h
     source/DSP/IShapeBank.h
@@ -48,9 +52,9 @@ add_library(Vessel_Core STATIC
     source/DSP/zplane_visualizer_math.h
 )
 
-target_include_directories(Vessel_Core PUBLIC source)
+target_include_directories(Heavy_Core PUBLIC source)
 
-target_link_libraries(Vessel_Core PUBLIC
+target_link_libraries(Heavy_Core PUBLIC
     juce::juce_audio_utils
     juce::juce_dsp
     juce::juce_gui_basics # Added for Editor components
@@ -60,7 +64,7 @@ target_link_libraries(Vessel_Core PUBLIC
     foleys_gui_magic
 )
 
-target_compile_definitions(Vessel_Core PUBLIC
+target_compile_definitions(Heavy_Core PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
@@ -71,25 +75,25 @@ target_compile_definitions(Vessel_Core PUBLIC
 # --- Main Plugin Target ---
 set(FORMATS AU VST3 Standalone)
 
-juce_add_plugin(Vessel
-    COMPANY_NAME "VesselAudio"
-    IS_SYNTH FALSE
-    NEEDS_MIDI_INPUT FALSE
+juce_add_plugin(HEAVY
+    COMPANY_NAME "HeavyAudio"
+    IS_SYNTH TRUE
+    NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE
-    PLUGIN_MANUFACTURER_CODE Vesl
-    PLUGIN_CODE Vssl
+    PLUGIN_MANUFACTURER_CODE Hvya
+    PLUGIN_CODE Hvyp
     FORMATS ${FORMATS}
-    PRODUCT_NAME "Vessel"
+    PRODUCT_NAME "HEAVY"
 )
 
 # Link the core library
-target_link_libraries(Vessel PRIVATE Vessel_Core)
+target_link_libraries(HEAVY PRIVATE Heavy_Core)
 
 # Tests
-target_include_directories(Vessel
+target_include_directories(HEAVY
     PUBLIC
         source
 )

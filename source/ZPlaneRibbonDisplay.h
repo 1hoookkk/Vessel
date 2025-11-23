@@ -1,160 +1,281 @@
+/*
+  ==============================================================================
+    VESSEL // Z-PLANE POLE CONSTELLATION
+    Fragile Brutalism: Paper tear reveals void with dancing DSP poles.
+    Zero allocations, phosphor trails, mechanical rattle.
+  ==============================================================================
+*/
+
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Utility/WaitFreeTripleBuffer.h"
 #include "SharedData.h"
-#include "DSP/EmuZPlaneCore.h"
-#include "DSP/PresetConverter.h"
-#include "DSP/zplane_visualizer_math.h"
+#include "DSP/EMUAuthenticTables.h"
+#include "UI/FragileBrutalism.h"
+#include <array>
+#include <cmath>
 
-class ZPlaneRibbonDisplay : public juce::Component, public juce::Timer {
+class ZPlaneRibbonDisplay : public juce::Component, public juce::Timer
+{
 public:
-    WaitFreeTripleBuffer<SystemState>& bufferRef;
-    SystemState cachedState{};
-    
-    // Local copy of the filter cube for visualization
-    ZPlaneCube vizCube;
-    int currentModeIndex = -1;
-
-    // Colors (from CLAUDE.md)
-    const juce::Colour kActiveCurve = juce::Colours::gold;
-    const juce::Colour kFuturePast  = juce::Colours::blueviolet.withAlpha(0.3f);
-    const juce::Colour kGrid        = juce::Colours::cyan.withAlpha(0.2f);
-    const juce::Colour kBackground  = juce::Colour(0xFF050505);
-
-    ZPlaneRibbonDisplay(WaitFreeTripleBuffer<SystemState>& buffer) : bufferRef(buffer) {
-        startTimerHz(30); // 30 FPS for heavy ribbon calc
+    ZPlaneRibbonDisplay(WaitFreeTripleBuffer<SystemState>& buffer)
+        : bufferRef(buffer)
+    {
+        currentModeIndex = 0;
+        trailWriteIndex = 0;
+        startTimerHz(30); // 30 FPS sufficient for pole motion
     }
 
-    void timerCallback() override {
-        if (bufferRef.pull(cachedState)) {
+    void timerCallback() override
+    {
+        if (bufferRef.pull(cachedState))
+        {
             // Check if mode changed
-            if (cachedState.modeIndex != currentModeIndex) {
+            if (cachedState.modeIndex != currentModeIndex)
+            {
                 currentModeIndex = cachedState.modeIndex;
-                updateCube();
+                clearTrails();
             }
+
+            // Store current pole positions in circular buffer
+            storePoleSnapshot();
+
+            // Update mechanical rattle
+            float rms = 0.0f;
+            for (int i = 0; i < 6; ++i)
+                rms += cachedState.leftPoles[i].r + cachedState.rightPoles[i].r;
+            rms /= 12.0f;
+
+            float transient = 0.0f; // Could extract from pole velocity
+            rattle.update(rms * 0.4f, transient);
+
             repaint();
         }
     }
 
-    void paint(juce::Graphics& g) override {
-        g.fillAll(kBackground);
-        
-        const float w = (float)getWidth();
-        const float h = (float)getHeight();
+    void paint(juce::Graphics& g) override
+    {
+        using namespace FragileBrutalism;
 
-        // Generate Geometry
-        // Use params from cachedState
-        // Note: sample rate fixed at 48k for visualizer or passed in?
-        // Ideally passed in via SystemState, but 48k is fine for vis.
-        auto ribbons = ZPlaneVisualizer::generate_ribbons(
-            vizCube, 
-            cachedState.centroidY, // Freq (Y)
-            cachedState.transformZ, // Trans (Z)
-            48000.0f
-        );
+        const int w = getWidth();
+        const int h = getHeight();
 
-        auto gridLines = ZPlaneVisualizer::generate_perspective_grid();
+        // PAPER BACKGROUND
+        g.fillAll(juce::Colour(kPaper));
 
-        // Render
-        // Perspective Projection Helper
-        auto project = [&](VisPoint3D p) -> juce::Point<float> {
-            // Simple perspective: x = freq, y = mag, z = depth
-            // Screen X = x * scale + z * offset
-            // Screen Y = y * scale + z * offset
-            
-            // Lexicon Style: Depth goes "into" the screen (scale shrinks)
-            float depthScale = 1.0f - (p.z * 0.4f); // Back is smaller
-            float screenX = p.x * w * 0.8f + w * 0.1f; // Margin
-            // Shift X based on Z to give "angle"
-            screenX += (p.z * w * 0.1f); 
-            
-            float screenY = (1.0f - p.y) * h * 0.8f + h * 0.1f; // Invert Y (0 is bottom)
-            // Shift Y up/down based on Z? Usually floor is flat.
-            screenY -= (p.z * h * 0.1f);
+        // VOID TEAR (visualizer area)
+        juce::Rectangle<int> voidArea = getBounds().reduced(kPadMedium);
+        g.setColour(juce::Colour(kVoid));
+        g.fillRect(voidArea);
 
-            return {screenX, screenY};
+        // INK BORDER around void
+        g.setColour(juce::Colour(kInk));
+        g.drawRect(voidArea, kBorderWidth);
+
+        // PHOSPHOR RENDERING (within void)
+        phosphor.resize(voidArea.getWidth(), voidArea.getHeight());
+
+        auto drawScene = [&](juce::Graphics& bufG) {
+            bufG.fillAll(juce::Colour(kVoid));
+
+            const float cx = voidArea.getWidth() * 0.5f;
+            const float cy = voidArea.getHeight() * 0.5f;
+            const float radius = juce::jmin(cx, cy) * 0.85f;
+
+            // Draw graticule
+            drawGraticule(bufG, cx, cy, radius);
+
+            // Draw unit circle (stability boundary)
+            bufG.setColour(juce::Colour(kInk).withAlpha(0.3f));
+            bufG.drawEllipse(cx - radius, cy - radius, radius * 2.0f, radius * 2.0f, 1.0f);
+
+            // Draw pole trails (back to front)
+            drawPoleTrails(bufG, cx, cy, radius);
         };
 
-        // Draw Grid
-        g.setColour(kGrid);
-        for (const auto& line : gridLines) {
-            juce::Path p;
-            auto p1 = project(line[0]);
-            auto p2 = project(line[1]);
-            g.drawLine(p1.x, p1.y, p2.x, p2.y, 1.0f);
+        // Composite with persistence (using scoped clip/origin)
+        {
+            juce::Graphics::ScopedSaveState savedState(g);
+            g.reduceClipRegion(voidArea);
+            g.setOrigin(voidArea.getPosition());
+            phosphor.drawWithPersistence(g, drawScene, 0.90f);
         }
 
-        // Draw Ribbons
-        // We want to draw from back (z=1) to front (z=0) for painter's algorithm
-        // generate_ribbons returns 0..1 (front to back?). 
-        // Visualizer logic: i=0 -> morph_x=0.
-        // If Morph=0 is "Front", then i=SLICE_COUNT-1 is "Back".
-        // We should iterate reverse.
-        
-        for (int i = (int)ribbons.size() - 1; i >= 0; --i) {
-            const auto& ribbon = ribbons[i];
-            if (ribbon.empty()) continue;
+        // HEADER TEXT (with mechanical rattle on paper)
+        juce::Point<float> rattleOffset = rattle.getOffset();
 
-            // Determine color
-            // Active slice is closest to currentMorph?
-            // currentMorph is cachedState.centroidX
-            float sliceMorph = ribbon[0].z;
-            float dist = std::abs(sliceMorph - cachedState.centroidX);
-            
-            juce::Colour col = kFuturePast;
-            float thick = 1.0f;
-            
-            // Highlight active zone
-            if (dist < 0.1f) {
-                float ratio = 1.0f - (dist / 0.1f);
-                col = kFuturePast.interpolatedWith(kActiveCurve, ratio);
-                thick = 1.0f + ratio * 2.0f;
-            }
+        juce::String modeName = (currentModeIndex >= 0 && currentModeIndex < AUTHENTIC_EMU_NUM_PAIRS)
+            ? juce::String(AUTHENTIC_EMU_IDS[currentModeIndex])
+            : juce::String("---");
+        modeName = modeName.replaceCharacter('_', ' ').replaceCharacter('-', ' ');
 
-            g.setColour(col);
-            
-            juce::Path path;
-            auto start = project(ribbon[0]);
-            path.startNewSubPath(start);
-            
-            for (size_t j = 1; j < ribbon.size(); ++j) {
-                path.lineTo(project(ribbon[j]));
-            }
-            
-            g.strokePath(path, juce::PathStrokeType(thick));
-        }
+        g.setColour(juce::Colour(kInk));
+        g.setFont(getMonoFont(12.0f, true));
+        juce::Rectangle<int> headerRect(
+            kPadMedium + (int)rattleOffset.x,
+            kPadSmall + (int)rattleOffset.y,
+            w - kPadMedium * 2,
+            16
+        );
+        g.drawText("POLE CONSTELLATION // " + modeName, headerRect, juce::Justification::left);
+
+        // PARAMETER READOUT
+        g.setColour(juce::Colour(kInkFaded));
+        g.setFont(getMonoFont(8.0f, false));
+        juce::String coords = juce::String::formatted(
+            "M:%03d F:%03d R:%03d",
+            (int)(cachedState.centroidX * 100.0f),
+            (int)(cachedState.centroidY * 100.0f),
+            (int)(cachedState.transformZ * 100.0f)
+        );
+        g.drawText(coords, kPadMedium, headerRect.getBottom() + 2, w - kPadMedium * 2, 12,
+                  juce::Justification::left);
+    }
+
+    void resized() override
+    {
+        phosphor.clear();
     }
 
 private:
-    void updateCube() {
-        // Map modeIndex to Shape Pair
-        // Access static bank from PresetConverter or EMUStaticShapeBank?
-        // Wait, PresetConverter::convertToCube takes (indexA, indexB).
-        // I need to know which indices correspond to 'modeIndex'.
-        // EMUStaticShapeBank has `morphPairIndices`.
-        // I should probably include EMUStaticShapeBank.h to look it up.
-        
-        // Or replicate the lookup here since it's simple.
-        // See EMUAuthenticTables.h:
-        /*
-        static const int MORPH_PAIRS[6][2] = {
-            { 0, 12 }, // Vowel_Ae <-> Vowel_Ih
-            { 7, 5 },  // Bell_Metallic <-> Metallic
-            { 3, 18 }, // Resonant Peak <-> Formant Filter
-            { 3, 4 },  // Resonant Peak <-> Wide Spectrum
-            { 1, 8 },  // Vocal Morph <-> Aggressive Lead
-            { 16, 31 } // Classic Sweep <-> Ultimate
-        };
-        */
-       
-       // Hardcoding for now to avoid another dependency, or include EMUAuthenticTables.h via PresetConverter.h
-       // PresetConverter.h includes EMUAuthenticTables.h. So `MORPH_PAIRS` is visible if static.
-       // Yes, `static const int MORPH_PAIRS...` in header.
-       
-       if (currentModeIndex >= 0 && currentModeIndex < 6) {
-           int a = MORPH_PAIRS[currentModeIndex][0];
-           int b = MORPH_PAIRS[currentModeIndex][1];
-           vizCube = PresetConverter::convertToCube(a, b);
-       }
+    WaitFreeTripleBuffer<SystemState>& bufferRef;
+    SystemState cachedState{};
+    int currentModeIndex;
+
+    // CIRCULAR BUFFER FOR TRAILS (pre-allocated, zero allocations)
+    static constexpr int TRAIL_CAPACITY = 30;
+    struct PoleSnapshot {
+        std::array<juce::Point<float>, 6> leftPoles;  // Cartesian (x, y)
+        std::array<juce::Point<float>, 6> rightPoles;
+    };
+    std::array<PoleSnapshot, TRAIL_CAPACITY> trailBuffer;
+    int trailWriteIndex;
+    int trailCount = 0;
+
+    // Aesthetic systems
+    FragileBrutalism::MechanicalRattle rattle;
+    FragileBrutalism::PhosphorBuffer phosphor;
+
+    // Polar to Cartesian conversion
+    inline juce::Point<float> polarToCartesian(float r, float theta) const
+    {
+        return {r * std::cos(theta), r * std::sin(theta)};
     }
+
+    void storePoleSnapshot()
+    {
+        auto& snapshot = trailBuffer[trailWriteIndex];
+
+        // Convert polar poles to cartesian and store
+        for (int i = 0; i < 6; ++i)
+        {
+            snapshot.leftPoles[i] = polarToCartesian(
+                cachedState.leftPoles[i].r,
+                cachedState.leftPoles[i].theta
+            );
+            snapshot.rightPoles[i] = polarToCartesian(
+                cachedState.rightPoles[i].r,
+                cachedState.rightPoles[i].theta
+            );
+        }
+
+        trailWriteIndex = (trailWriteIndex + 1) % TRAIL_CAPACITY;
+        if (trailCount < TRAIL_CAPACITY)
+            trailCount++;
+    }
+
+    void clearTrails()
+    {
+        trailWriteIndex = 0;
+        trailCount = 0;
+    }
+
+    void drawGraticule(juce::Graphics& g, float cx, float cy, float radius)
+    {
+        using namespace FragileBrutalism;
+
+        g.setColour(juce::Colour(kInk).withAlpha(0.1f));
+
+        // Crosshairs (real/imaginary axes)
+        g.drawLine(cx - radius, cy, cx + radius, cy, 1.0f);
+        g.drawLine(cx, cy - radius, cx, cy + radius, 1.0f);
+
+        // Inner circle at r=0.5
+        g.drawEllipse(cx - radius * 0.5f, cy - radius * 0.5f,
+                     radius, radius, 1.0f);
+
+        // Radial lines (every 45°)
+        for (int i = 0; i < 8; ++i)
+        {
+            float angle = i * juce::MathConstants<float>::pi / 4.0f;
+            float x = cx + radius * std::cos(angle);
+            float y = cy + radius * std::sin(angle);
+            g.drawLine(cx, cy, x, y, 1.0f);
+        }
+    }
+
+    void drawPoleTrails(juce::Graphics& g, float cx, float cy, float radius)
+    {
+        using namespace FragileBrutalism;
+
+        if (trailCount == 0) return;
+
+        // Draw oldest to newest
+        for (int t = trailCount - 1; t >= 0; --t)
+        {
+            int bufferIndex = (trailWriteIndex - 1 - t + TRAIL_CAPACITY) % TRAIL_CAPACITY;
+            const auto& snapshot = trailBuffer[bufferIndex];
+
+            float age = (float)t / (float)TRAIL_CAPACITY;
+            float opacity = 1.0f - (age * age); // Quadratic decay
+
+            if (opacity < 0.05f) continue;
+
+            // Draw right channel (orange faded)
+            g.setColour(juce::Colour(kOrange).withAlpha(opacity * 0.4f));
+            for (int i = 0; i < 6; ++i)
+            {
+                const auto& pole = snapshot.rightPoles[i];
+                float x = cx + pole.x * radius;
+                float y = cy - pole.y * radius; // Invert Y
+
+                float size = (t == 0) ? 4.0f : 2.0f;
+                g.fillEllipse(x - size * 0.5f, y - size * 0.5f, size, size);
+            }
+
+            // Draw left channel (ink)
+            g.setColour(juce::Colour(kInk).withAlpha(opacity));
+            for (int i = 0; i < 6; ++i)
+            {
+                const auto& pole = snapshot.leftPoles[i];
+                float x = cx + pole.x * radius;
+                float y = cy - pole.y * radius; // Invert Y
+
+                float size = (t == 0) ? 5.0f : 2.5f;
+
+                // Current position: crosshair marker
+                if (t == 0)
+                {
+                    g.drawLine(x - size, y, x + size, y, 1.5f);
+                    g.drawLine(x, y - size, x, y + size, 1.5f);
+
+                    // Highlight if near unit circle (resonance warning)
+                    float r = std::sqrt(pole.x * pole.x + pole.y * pole.y);
+                    if (r > 0.92f)
+                    {
+                        g.setColour(juce::Colour(kOrange).withAlpha(opacity));
+                        g.drawEllipse(x - size * 1.5f, y - size * 1.5f,
+                                     size * 3.0f, size * 3.0f, 1.0f);
+                        g.setColour(juce::Colour(kInk).withAlpha(opacity));
+                    }
+                }
+                else
+                {
+                    g.fillEllipse(x - size * 0.5f, y - size * 0.5f, size, size);
+                }
+            }
+        }
+    }
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ZPlaneRibbonDisplay)
 };

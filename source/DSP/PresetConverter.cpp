@@ -22,18 +22,27 @@ PolarShape loadPolarShape(int shapeIndex) {
     PolarShape out{};
 
     if (shapeIndex < 0 || shapeIndex >= AUTHENTIC_EMU_NUM_SHAPES) {
-        for (auto& s : out) s = {0.0f, 0.0f};
-        out[6] = {0.99f, 0.0f};
+        // Invalid index: return safe default (all poles at low radius)
+        for (auto& s : out) s = {0.2f, 0.0f};
         return out;
     }
 
     const float* shapeData = AUTHENTIC_EMU_SHAPES[shapeIndex];
+
+    // Original EMU tables have 6 poles (12 floats: radius,theta pairs)
+    // We need 7 sections for the 14-pole cascade
     for (int i = 0; i < 6; ++i) {
+        // Table stores [radius, theta]; load directly (no swap)
         out[i] = { shapeData[i * 2], shapeData[i * 2 + 1] };
     }
 
-    // 7th section: gentle pass-through helper to keep the cascade stable.
-    out[6] = {0.99f, 0.0f};
+    // Synthesize 7th pole: extrapolate from highest-frequency poles
+    // Average poles 4 and 5 (sections at ~4-8kHz range) and push slightly higher
+    float r6 = (out[4].first + out[5].first) * 0.5f * 0.95f; // Slightly lower resonance
+    float theta6 = (out[4].second + out[5].second) * 0.5f * 1.15f; // Push frequency higher
+    theta6 = std::clamp(theta6, 0.0f, kPi);
+    out[6] = { r6, theta6 };
+
     return out;
 }
 
@@ -85,12 +94,22 @@ ZPlaneFrame PresetConverter::convertShapeToFrame(int shapeIndex) {
 ZPlaneSection PresetConverter::convertPoleToSection(float r, float theta) {
     ZPlaneSection sec{};
 
-    // Theta -> Frequency (k1), using reference sample rate.
+    // SAMPLE-RATE INDEPENDENT CONVERSION:
+    // Legacy theta values are at 44.1kHz reference. We extract the frequency in Hz,
+    // which is sample-rate independent. Later, ARMAdilloEngine::decode_section will
+    // recalculate the correct theta for the current playback sample rate.
+    //
+    // Example: Pole at 10kHz
+    //   At 44.1kHz: theta = 1.425 rad → freq = 10kHz → k1 = 0.899
+    //   At 48kHz:   theta = 1.309 rad ← freq = 10kHz ← k1 = 0.899
+    //
+    // The k1 parameter stores normalized frequency (20Hz-20kHz log scale), NOT theta.
+
     const float sampleRate = (float)AUTHENTIC_EMU_SAMPLE_RATE_REF; // 44100
     float freqHz = theta * sampleRate / (2.0f * kPi);
     freqHz = std::clamp(freqHz, 20.0f, 20000.0f);
 
-    // Logarithmic mapping into 0..1
+    // Logarithmic mapping into 0..1: k1=0 → 20Hz, k1=1 → 20kHz
     sec.k1 = std::log10(freqHz / 20.0f) / 3.0f;
     sec.k1 = std::clamp(sec.k1, 0.0f, 1.0f);
 

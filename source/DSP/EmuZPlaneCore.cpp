@@ -1,4 +1,5 @@
 #include "EmuZPlaneCore.h"
+#include <cassert>
 
 // =========================================================
 // ARMAdilloEngine Implementation
@@ -88,19 +89,25 @@ BiquadCoeffs ARMAdilloEngine::decode_section(const ZPlaneSection& params, float 
     R = std::clamp(R, 0.10f, 0.995f);
     float b2_real = -(R * R); // Standard biquad convention: b2 is negative for stability
 
-    // 2. Decode Frequency (k1) -> theta
-    float freqHz = 20.0f * std::pow(1000.0f, params.k1);
-    freqHz = std::clamp(freqHz, 20.0f, sampleRate * 0.49f);
-    float theta = 2.0f * 3.14159f * freqHz / sampleRate;
+    // 2. Decode Frequency (k1) -> theta at CURRENT sample rate
+    // k1 is sample-rate independent (normalized log scale: 20Hz-20kHz)
+    // We convert k1 → Hz → theta using the current sampleRate.
+    // This ensures poles track the correct frequency regardless of playback sample rate.
+    float freqHz = 20.0f * std::pow(1000.0f, params.k1); // Inverse of log10(f/20)/3
+    freqHz = std::clamp(freqHz, 20.0f, sampleRate * 0.49f); // Respect Nyquist
+    float theta = 2.0f * 3.14159f * freqHz / sampleRate; // Digital frequency
 
     // 3. Calculate Feedback 1 (b1)
     float b1_real = 2.0f * R * std::cos(theta);
 
-    // 4. Feedforward (a0, a1, a2) with simple energy-compensated resonator
-    float alpha = (1.0f - R);
-    float a0_real = alpha * params.gain;
+    // 4. Feedforward: RESONATOR topology (not bandpass!)
+    // CRITICAL FIX: E-mu uses resonators that ADD peaks without killing signal
+    // Bandpass (a0=-a2) kills fundamentals when cascaded
+    // Resonator (a0=1, a2=0) passes signal through while poles create formant peaks
+    float cascadeGain = 1.0f / 7.0f; // Divide by section count to prevent clipping
+    float a0_real = cascadeGain * params.gain;
     float a1_real = 0.0f;
-    float a2_real = -alpha * params.gain;
+    float a2_real = 0.0f; // ZERO - this is the key difference from bandpass
 
     // Convert to Fixed Point
     c.b1 = float_to_fixed(b1_real);
@@ -110,64 +117,4 @@ BiquadCoeffs ARMAdilloEngine::decode_section(const ZPlaneSection& params, float 
     c.a2 = float_to_fixed(a2_real);
 
     return c;
-}
-
-// =========================================================
-// EmuHChipFilter Implementation
-// =========================================================
-
-void EmuHChipFilter::reset() {
-    for (int i = 0; i < ZPlaneFrame::SECTION_COUNT; ++i) {
-        states[i] = {0, 0, 0, 0};
-    }
-}
-
-void EmuHChipFilter::setSampleRate(float newSampleRate) {
-    sampleRate = newSampleRate;
-    // Note: Caller should re-calculate coefficients after this call
-}
-
-float EmuHChipFilter::getSampleRate() const {
-    return sampleRate;
-}
-
-void EmuHChipFilter::process_block(const ZPlaneCube& cube, 
-                   float mod_x, float mod_y, float mod_z, 
-                   const std::vector<float>& input, 
-                   std::vector<float>& output) {
-    // Resize output if necessary (though caller should ideally manage this)
-    if (output.size() != input.size()) output.resize(input.size());
-    
-    process_block(cube, mod_x, mod_y, mod_z, input.data(), output.data(), static_cast<int>(input.size()));
-}
-
-void EmuHChipFilter::process_block(const ZPlaneCube& cube, 
-                   float mod_x, float mod_y, float mod_z, 
-                   const float* input, 
-                   float* output,
-                   int numSamples) {
-    
-    // 1. Calculate ARMAdillo parameters for this block
-    // (In real hardware, this might ramp per 32 samples. We do it per block here)
-    ZPlaneFrame frame = ARMAdilloEngine::interpolate_cube(cube, mod_x, mod_y, mod_z);
-
-    // 2. Decode into coefficients for all 7 sections
-    BiquadCoeffs coeffs[ZPlaneFrame::SECTION_COUNT];
-    for(int s=0; s<ZPlaneFrame::SECTION_COUNT; ++s) {
-        coeffs[s] = ARMAdilloEngine::decode_section(frame.sections[s], sampleRate);
-    }
-
-    // 3. Sample Loop
-    for (int i = 0; i < numSamples; ++i) {
-        // Convert Input Float -> Fixed
-        dsp_sample_t signal = float_to_fixed(input[i]);
-
-        // Cascade Series Processing
-        for (int s = 0; s < ZPlaneFrame::SECTION_COUNT; ++s) {
-            signal = process_biquad(signal, states[s], coeffs[s]);
-        }
-
-        // Convert Output Fixed -> Float
-        output[i] = fixed_to_float(signal);
-    }
 }

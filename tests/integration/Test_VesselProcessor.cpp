@@ -1,17 +1,17 @@
 #include <catch2/catch_test_macros.hpp>
 #include "PluginProcessor.h"
 
-TEST_CASE("VesselProcessor Integration", "[integration][processor]") {
+TEST_CASE("HeavyProcessor Integration", "[integration][processor]") {
     // JUCE Message Manager is needed for some plugin components (like parameters)
     // We might need a ScopedJuceInitialiser if tests crash, but for now try direct.
-    
+
     SECTION("Processor Instantiation") {
-        VesselProcessor processor;
-        REQUIRE(processor.getName() == "VESSEL");
+        HeavyProcessor processor;
+        REQUIRE(processor.getName() == "HEAVY");
     }
 
     SECTION("Audio Block Processing (Silence)") {
-        VesselProcessor processor;
+        HeavyProcessor processor;
         
         // Prepare
         processor.prepareToPlay(48000.0, 512);

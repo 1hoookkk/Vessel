@@ -1,0 +1,121 @@
+Master Spec: E-mu H-Chip (FX8010) Emulation
+
+Objective: Create a component-level emulation of the Audity 2000 Z-Plane filter, prioritizing "Thinness," "Grit," and "Inter-stage Saturation" over audio fidelity.
+1. Topology & Structure
+
+    Architecture: Series Cascade (Chain).
+
+    Order: 14-pole total, broken into 7 distinct Biquad Sections.
+
+    Biquad Type: Transposed Direct Form II (TDF-II).
+
+        Reasoning: Research 2 confirms TDF-II is the standard for fixed-point hardware to manage accumulator noise. Do not use Direct Form I.
+
+    Filter Types: The engine must support Full Biquads (Poles + Zeros).
+
+        Vowel Configuration: 1x LowPass/HighPass section + 6x Peaking/Resonator sections.
+
+2. Fixed-Point Math Rules (The "Thin" Source)
+
+    Data Path: 32-bit Integer (Q31 Format).
+
+        Constraint: Audio samples must be converted to int32 at the input and back to float only at the very final output.
+
+    Coefficients: 16-bit Integer (Q15 Format).
+
+        Constraint: Floating-point coefficients calculated from the morphing logic must be truncated to 16-bit before being applied to the filter.
+
+        Why: This quantization error causes the "thin" spectral smearing described in the research.
+
+    Accumulator: 64-bit Integer (simulating the 67-bit MAC).
+
+        Logic:
+
+                
+        32-bit Input×16-bit Coeff=48-bit Result32-bit Input×16-bit Coeff=48-bit Result
+
+              
+
+        . Accumulate this in a 64-bit container to prevent overflow inside the biquad.
+
+3. Saturation Policy (The "Growl" Source)
+
+    Inter-Stage Clipping: MANDATORY.
+
+    Logic:
+
+        Compute Biquad Stage
+
+                
+        NN
+
+              
+
+        output (Accumulator has high-precision value).
+
+        Bit-shift right (approx 15 bits) to match the 32-bit Data Path.
+
+        Hard Clip / Saturate to 32-bit Min/Max.
+
+        Feed this clipped value into Stage
+
+                
+        N+1N+1
+
+              
+
+        .
+
+    Why: This limits the headroom. Resonant peaks from Stage 1 will square-wave clip before hitting Stage 2. This is the definition of the Audity sound.
+
+4. Control & Modulation (The "Buzz" Source)
+
+    Update Rate: Every 32 Samples.
+
+        Constraint: Do NOT calculate filter coefficients every sample.
+
+        Constraint: Do NOT smooth or ramp coefficients (linear interpolation) between blocks.
+
+    Behavior: The filter parameters must "teleport" every 32 samples (approx 1.2kHz). This creates the "Zipper Noise" sidebands during fast morphs.
+
+Implementation Checklist for Your AI
+
+Ask your AI to verify the code against these specific logic checks:
+
+    Bit-Depth Check: "Are we casting to int16_t for coefficients and int32_t for state? If we use float, it must implement manual truncation to emulate 16-bit precision."
+
+    Saturation Location: "Confirm that saturation happens inside the loop for(int i=0; i<7; ++i), specifically after the calculation but before the next iteration."
+
+    TDF-II Check: "Verify the biquad logic follows: y = b0*x + z1. If it looks like y = b0*x + b1*x_prev, that is Direct Form I and it is rejected."
+
+    Gain Staging: "Does the coefficient calculation include DC Gain Normalization? Without it, the fixed-point saturation will trigger constantly and silence the audio."
+
+The "Reference Implementation" Logic
+
+If your AI needs a logic flow to copy, describe it like this:
+
+    The Loop:
+
+        Wait 32 Samples.
+
+        Read Morph X/Y/Z.
+
+        Interpolate parameters (Frequency/Resonance).
+
+        Calculate Float Coefficients (using Rossum formulas or standard Biquad).
+
+        TRUNCATE Float Coeffs to 16-bit Fixed Point.
+
+        Process 32 Samples of Audio:
+
+            Convert Input to 32-bit Fixed.
+
+            Pass through Section 1 (TDF-II) -> CLIP Result.
+
+            Pass through Section 2 (TDF-II) -> CLIP Result.
+
+            ...
+
+            Pass through Section 7 (TDF-II) -> CLIP Result.
+
+            Convert Final Output to Float.
